@@ -145,8 +145,35 @@ export function fmt(v: number | null | undefined): string {
   return v.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'
 }
 
+// Correspondance slug_fr Cardmarket -> {serie, set} TCGdex
+// Format URL: https://assets.tcgdex.net/en/{serie}/{set}/{numero}/high.png
+const SLUG_TO_TCGDEX: Record<string, { serie: string; set: string }> = {
+  'Base-Set':          { serie: 'base',    set: 'base1'   },
+  'Jungle':            { serie: 'base',    set: 'base2'   },
+  'Fossil':            { serie: 'base',    set: 'base3'   },
+  'Team-Rocket':       { serie: 'base',    set: 'base5'   },
+  'Neo-Genesis':       { serie: 'neo',     set: 'neo1'    },
+  'Neo-Discovery':     { serie: 'neo',     set: 'neo2'    },
+  'Neo-Revelation':    { serie: 'neo',     set: 'neo3'    },
+  'Neo-Destiny':       { serie: 'neo',     set: 'neo4'    },
+  'Expedition-Base-Set': { serie: 'e-card', set: 'ecard1' },
+  'Aquapolis':         { serie: 'e-card',  set: 'ecard2'  },
+  'Scarlet-Violet':    { serie: 'sv',      set: 'sv1'     },
+  'Paldea-Evolved':    { serie: 'sv',      set: 'sv2'     },
+  'Obsidian-Flames':   { serie: 'sv',      set: 'sv3'     },
+  'Paradox-Rift':      { serie: 'sv',      set: 'sv4'     },
+  'Temporal-Forces':   { serie: 'sv',      set: 'sv5'     },
+  'Twilight-Masquerade': { serie: 'sv',    set: 'sv6'     },
+  'Paldean-Fates':     { serie: 'sv',      set: 'sv3pt5'  },
+  'Surging-Sparks':    { serie: 'sv',      set: 'sv8'     },
+  'Stellar-Crown':     { serie: 'sv',      set: 'sv7'     },
+  'Journey-Together':  { serie: 'sv',      set: 'sv9'     },
+}
+
 export function imgUrl(slugFr: string | null, serieSlug: string | null, numero: string): string | null {
-  if (!slugFr || !serieSlug) return null
+  if (!serieSlug) return null
+  const tcgdex = SLUG_TO_TCGDEX[serieSlug]
+  if (!tcgdex) return null
   const num = numero.replace(/^0+/, '') || numero
-  return `https://assets.tcgdex.net/fr/${serieSlug}/${serieSlug}${num}/high.png`
+  return `https://assets.tcgdex.net/en/${tcgdex.serie}/${tcgdex.set}/${num}/high.png`
 }
