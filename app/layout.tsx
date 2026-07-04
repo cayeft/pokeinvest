@@ -17,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex gap-4">
             <a href="/" className="text-sm text-gray-500 hover:text-gray-900">Dashboard</a>
             <a href="/cartes" className="text-sm text-gray-500 hover:text-gray-900">Cartes</a>
+            <a href="/portefeuille" className="text-sm text-gray-500 hover:text-gray-900">Portefeuille</a>
           </div>
         </nav>
         {children}
