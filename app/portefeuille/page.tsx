@@ -116,20 +116,33 @@ export default function Portefeuille() {
     setLoading(false)
   }
 
+  const [searchSerie, setSearchSerie] = useState('')
+  const [allSeries, setAllSeries] = useState<{id: number; nom_fr: string}[]>([])
+
+  useEffect(() => {
+    supabase.from('series').select('id,nom_fr').eq('actif', true).order('id')
+      .then(({ data }) => setAllSeries(data || []))
+  }, [])
+
   // Recherche de cartes
   useEffect(() => {
     if (searchQuery.length < 2) { setSearchResults([]); return }
     const timer = setTimeout(async () => {
-      const { data } = await supabase
+      let query = supabase
         .from('cartes')
-        .select('id,nom_fr,numero,slug_carte_fr,series(nom_fr,slug_fr)')
+        .select('id,nom_fr,numero,slug_carte_fr,series(id,nom_fr,slug_fr)')
         .ilike('nom_fr', `%${searchQuery}%`)
         .eq('actif', true)
-        .limit(8)
+        .order('serie_id')
+        .limit(100)
+      if (searchSerie) {
+        query = query.eq('serie_id', parseInt(searchSerie))
+      }
+      const { data } = await query
       setSearchResults((data as any) || [])
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchQuery, searchSerie])
 
   async function addPosition() {
     if (!selectedCarte || !form.prix_achat) return
@@ -319,26 +332,44 @@ export default function Portefeuille() {
             {!selectedCarte ? (
               <div className="mb-4">
                 <label className="text-xs font-medium text-gray-500 mb-1 block">Rechercher une carte</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Dracaufeu, Mewtwo..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400"
-                  autoFocus
-                />
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="Ex: Dracaufeu, Pikachu..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+                    autoFocus
+                  />
+                  <select
+                    value={searchSerie}
+                    onChange={e => setSearchSerie(e.target.value)}
+                    className="px-2 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400 bg-white text-gray-600"
+                  >
+                    <option value="">Toutes séries</option>
+                    {allSeries.map(s => <option key={s.id} value={s.id}>{s.nom_fr}</option>)}
+                  </select>
+                </div>
                 {searchResults.length > 0 && (
-                  <div className="mt-1 border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
+                    <div className="px-3 py-1.5 bg-gray-50 text-xs text-gray-400 border-b border-gray-100">
+                      {searchResults.length} résultat{searchResults.length > 1 ? 's' : ''}
+                    </div>
                     {searchResults.map(r => (
                       <button
                         key={r.id}
-                        onClick={() => { setSelectedCarte(r); setSearchQuery('') }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                        onClick={() => { setSelectedCarte(r); setSearchQuery(''); setSearchSerie('') }}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-0 flex justify-between items-center"
                       >
                         <span className="font-medium text-gray-900">{r.nom_fr}</span>
-                        <span className="text-gray-400 ml-2 text-xs">{(r.series as any)?.nom_fr} · N°{r.numero}</span>
+                        <span className="text-gray-400 text-xs ml-2 flex-shrink-0">{(r.series as any)?.nom_fr} · N°{r.numero}</span>
                       </button>
                     ))}
+                  </div>
+                )}
+                {searchQuery.length >= 2 && searchResults.length === 0 && (
+                  <div className="mt-1 text-xs text-gray-400 text-center py-3 border border-gray-100 rounded-lg">
+                    Aucune carte trouvée — essaie un autre nom ou une autre série
                   </div>
                 )}
               </div>
