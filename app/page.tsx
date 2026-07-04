@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { computeScore, getPrixFromRows, getHistAll, fmt, imgUrl } from '@/lib/scoring'
@@ -10,12 +10,6 @@ interface Serie {
   nom_fr: string
   slug_fr: string
   bloc: string
-}
-
-interface StatSerie {
-  total: number
-  completes: number
-  pct: number
 }
 
 interface TopCarte {
@@ -47,13 +41,11 @@ async function fetchAllPages(table: string, select: string, filter?: { col: stri
 function PieChart({ wizards, ev }: { wizards: number; ev: number }) {
   const total = wizards + ev
   if (total === 0) return null
-  const wizPct = wizards / total
-  const evPct = ev / total
   const W = 200
   const cx = W / 2
   const cy = W / 2
   const r = 75
-  const gap = 4
+  const wizPct = wizards / total
 
   function slice(startPct: number, endPct: number, color: string, label: string, count: number) {
     const start = startPct * 2 * Math.PI - Math.PI / 2
@@ -68,10 +60,7 @@ function PieChart({ wizards, ev }: { wizards: number; ev: number }) {
     const ly = cy + (r + 28) * Math.sin(mid)
     return (
       <g key={color}>
-        <path
-          d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`}
-          fill={color} opacity="0.85"
-        />
+        <path d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`} fill={color} opacity="0.85" />
         <text x={lx} y={ly - 6} textAnchor="middle" fontSize="10" fill="#555" fontWeight="500">{label}</text>
         <text x={lx} y={ly + 7} textAnchor="middle" fontSize="11" fill="#333" fontWeight="600">{count}</text>
       </g>
@@ -91,15 +80,16 @@ function PieChart({ wizards, ev }: { wizards: number; ev: number }) {
 
 export default function Dashboard() {
   const [series, setSeries] = useState<Serie[]>([])
-  const [stats, setStats] = useState<Record<number, StatSerie>>({})
   const [totalCards, setTotalCards] = useState(0)
-  const [totalComplete, setTotalComplete] = useState(0)
   const [totalPrix, setTotalPrix] = useState(0)
   const [lastDate, setLastDate] = useState('')
   const [loading, setLoading] = useState(true)
   const [topCartes, setTopCartes] = useState<TopCarte[]>([])
   const [portfolioStats, setPortfolioStats] = useState<{ valeur: number; pnl: number; nb: number } | null>(null)
   const [lastDateParSerie, setLastDateParSerie] = useState<Record<number, string>>({})
+  const [nbWizards, setNbWizards] = useState(0)
+  const [nbEV, setNbEV] = useState(0)
+  const [prochaineSerie, setProchaineSerie] = useState<{ nom_fr: string; lastDate: string; joursDepuis: number } | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -114,79 +104,20 @@ export default function Dashboard() {
 
       if (!seriesData) return
 
-      // Prix par carte
       const pm: Record<number, any[]> = {}
       for (const p of prixData) {
         if (!pm[p.carte_id]) pm[p.carte_id] = []
         pm[p.carte_id].push(p)
       }
 
-      // Stats par série
-      const cartesParSerie: Record<number, number[]> = {}
+      // Cartes par serie
+      const cartesParSerie: Record<number, any[]> = {}
       for (const c of cartesData) {
         if (!cartesParSerie[c.serie_id]) cartesParSerie[c.serie_id] = []
-        cartesParSerie[c.serie_id].push(c.id)
+        cartesParSerie[c.serie_id].push(c)
       }
 
-      const newStats: Record<number, StatSerie> = {}
-      for (const s of seriesData) {
-        const ids = cartesParSerie[s.id] || []
-        const total = ids.length
-        const completes = ids.filter(id => (pm[id]?.length || 0) >= 5).length
-        newStats[s.id] = { total, completes, pct: total > 0 ? Math.round(completes / total * 100) : 0 }
-      }
-
-      // Top 5 cartes avec la meilleure tendance
-      const cartesAvecTendance: TopCarte[] = []
-      for (const c of cartesData) {
-        const rows = pm[c.id] || []
-        if (rows.length < 10) continue // besoin d'au moins 2 dates × 5 états
-        const hist = getHistAll(rows)
-        if (hist.length < 2) continue
-        const prix = getPrixFromRows(rows)
-        const serie = (c.series as any)
-        const isHolo = parseInt(c.numero) <= 16
-        const sc = computeScore(prix, isHolo, serie?.bloc || '', hist)
-        if (sc.tendancePct == null || sc.tendancePct <= 0) continue
-        const prixActuel = prix.NM ?? prix.EX ?? prix.GD ?? null
-        cartesAvecTendance.push({
-          id: c.id,
-          nom_fr: c.nom_fr,
-          numero: c.numero,
-          slug_carte_fr: c.slug_carte_fr,
-          serie: { nom_fr: serie?.nom_fr || '', slug_fr: serie?.slug_fr || '' },
-          tendancePct: sc.tendancePct,
-          prixActuel,
-          score: sc.total,
-        })
-      }
-      cartesAvecTendance.sort((a, b) => b.tendancePct - a.tendancePct)
-      setTopCartes(cartesAvecTendance.slice(0, 5))
-
-      // Portefeuille
-      const { data: portData } = await supabase
-        .from('portefeuille')
-        .select('prix_achat,quantite,carte_id,etat,statut')
-        .eq('statut', 'actif')
-      if (portData && portData.length > 0) {
-        const portCarteIds = [...new Set(portData.map((p: any) => p.carte_id))]
-        const portPrix: Record<number, any[]> = {}
-        for (const id of portCarteIds) {
-          const rows = pm[id] || []
-          if (rows.length) portPrix[id] = rows
-        }
-        const coutTotal = portData.reduce((s: number, p: any) => s + p.prix_achat * p.quantite, 0)
-        const valeurTotale = portData.reduce((s: number, p: any) => {
-          const rows = portPrix[p.carte_id] || []
-          const prix = getPrixFromRows(rows)
-          const etatKey = p.etat?.split(' ')[0] || 'NM'
-          const prixActuel = (prix as any)[etatKey] ?? null
-          return s + (prixActuel != null ? prixActuel * p.quantite : p.prix_achat * p.quantite)
-        }, 0)
-        setPortfolioStats({ valeur: valeurTotale, pnl: valeurTotale - coutTotal, nb: portData.length })
-      }
-
-      // Date du dernier scraping par série
+      // Date du dernier scraping par serie
       const dateParSerie: Record<number, string> = {}
       for (const c of cartesData) {
         const rows = pm[c.id] || []
@@ -198,13 +129,70 @@ export default function Dashboard() {
       }
       setLastDateParSerie(dateParSerie)
 
-      const totalC = cartesData.length
-      const totalCo = cartesData.filter(c => (pm[c.id]?.length || 0) >= 5).length
+      // Prochaine serie a scrapper = serie complete (100%) avec la date la plus ancienne
+      const seriesCompletes = seriesData.filter(s => {
+        const cartes = cartesParSerie[s.id] || []
+        if (cartes.length === 0) return false
+        const completes = cartes.filter(c => (pm[c.id]?.length || 0) >= 5).length
+        return completes === cartes.length
+      })
+      if (seriesCompletes.length > 0) {
+        const prochaine = seriesCompletes.sort((a, b) => {
+          const da = dateParSerie[a.id] || '0000-00-00'
+          const db = dateParSerie[b.id] || '0000-00-00'
+          return da.localeCompare(db)
+        })[0]
+        const dernDate = dateParSerie[prochaine.id]
+        const jours = dernDate ? Math.floor((Date.now() - new Date(dernDate).getTime()) / 86400000) : 0
+        setProchaineSerie({ nom_fr: prochaine.nom_fr, lastDate: dernDate || '—', joursDepuis: jours })
+      }
+
+      // Stats blocs
+      const wiz = seriesData.filter(s => s.bloc === 'Wizards').reduce((sum, s) => sum + (cartesParSerie[s.id]?.length || 0), 0)
+      const evC = seriesData.filter(s => s.bloc === 'EV').reduce((sum, s) => sum + (cartesParSerie[s.id]?.length || 0), 0)
+      setNbWizards(wiz)
+      setNbEV(evC)
+
+      // Top 5 tendance
+      const cartesAvecTendance: TopCarte[] = []
+      for (const c of cartesData) {
+        const rows = pm[c.id] || []
+        if (rows.length < 10) continue
+        const hist = getHistAll(rows)
+        if (hist.length < 2) continue
+        const prix = getPrixFromRows(rows)
+        const serie = (c.series as any)
+        const isHolo = parseInt(c.numero) <= 16
+        const sc = computeScore(prix, isHolo, serie?.bloc || '', hist)
+        if (sc.tendancePct == null || sc.tendancePct <= 0) continue
+        cartesAvecTendance.push({
+          id: c.id, nom_fr: c.nom_fr, numero: c.numero, slug_carte_fr: c.slug_carte_fr,
+          serie: { nom_fr: serie?.nom_fr || '', slug_fr: serie?.slug_fr || '' },
+          tendancePct: sc.tendancePct,
+          prixActuel: prix.NM ?? prix.EX ?? prix.GD ?? null,
+          score: sc.total,
+        })
+      }
+      cartesAvecTendance.sort((a, b) => b.tendancePct - a.tendancePct)
+      setTopCartes(cartesAvecTendance.slice(0, 5))
+
+      // Portefeuille
+      const { data: portData } = await supabase
+        .from('portefeuille').select('prix_achat,quantite,carte_id,etat,statut').eq('statut', 'actif')
+      if (portData && portData.length > 0) {
+        const coutTotal = portData.reduce((s: number, p: any) => s + p.prix_achat * p.quantite, 0)
+        const valeurTotale = portData.reduce((s: number, p: any) => {
+          const rows = pm[p.carte_id] || []
+          const prix = getPrixFromRows(rows)
+          const etatKey = p.etat?.split(' ')[0] || 'NM'
+          const prixActuel = (prix as any)[etatKey] ?? null
+          return s + (prixActuel != null ? prixActuel * p.quantite : p.prix_achat * p.quantite)
+        }, 0)
+        setPortfolioStats({ valeur: valeurTotale, pnl: valeurTotale - coutTotal, nb: portData.length })
+      }
 
       setSeries(seriesData)
-      setStats(newStats)
-      setTotalCards(totalC)
-      setTotalComplete(totalCo)
+      setTotalCards(cartesData.length)
       setTotalPrix(prixData.length)
       setLastDate(lastPrix.data?.[0]?.date_scrape || '')
       setLoading(false)
@@ -212,23 +200,15 @@ export default function Dashboard() {
     load()
   }, [])
 
-  const wizards = series.filter(s => s.bloc === 'Wizards')
-  const ev = series.filter(s => s.bloc === 'EV')
-  const pct = totalCards > 0 ? Math.round(totalComplete / totalCards * 100) : 0
-  const seriesDone = Object.values(stats).filter(s => s.pct === 100).length
-
-  const nbWizards = wizards.reduce((s, ser) => s + (stats[ser.id]?.total || 0), 0)
-  const nbEV = ev.reduce((s, ser) => s + (stats[ser.id]?.total || 0), 0)
-
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-medium text-gray-900">PokéInvest</h1>
+          <h1 className="text-2xl font-medium text-gray-900">PokeInvest</h1>
           <p className="text-sm text-gray-500 mt-1">Simulateur d'investissement TCG</p>
         </div>
         <Link href="/cartes" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-          Explorer les cartes →
+          Explorer les cartes
         </Link>
       </div>
 
@@ -236,40 +216,48 @@ export default function Dashboard() {
         <div className="text-center py-12 text-gray-400">Chargement...</div>
       ) : (
         <>
-          {/* Métriques */}
-          <div className="grid grid-cols-4 gap-3 mb-6">
-            {[
-              { label: 'Progression', value: `${pct}%`, sub: `${totalComplete.toLocaleString()} / ${totalCards.toLocaleString()} cartes` },
-              { label: 'Prix collectés', value: totalPrix.toLocaleString(), sub: '5 états × carte' },
-              { label: 'Séries terminées', value: `${seriesDone} / ${series.length}`, sub: `${series.length - seriesDone} restantes` },
-              { label: 'Mis à jour', value: lastDate || '—', sub: 'dernier scraping' },
-            ].map(m => (
-              <div key={m.label} className="bg-gray-50 rounded-lg p-4">
-                <div className="text-xs text-gray-500 mb-1">{m.label}</div>
-                <div className="text-xl font-medium text-gray-900">{m.value}</div>
-                <div className="text-xs text-gray-400 mt-1">{m.sub}</div>
+          {/* Metriques */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-xs text-gray-500 mb-1">Prix collectes</div>
+              <div className="text-xl font-medium text-gray-900">{totalPrix.toLocaleString()}</div>
+              <div className="text-xs text-gray-400 mt-1">{totalCards.toLocaleString()} cartes</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-xs text-gray-500 mb-1">Dernier scraping</div>
+              <div className="text-xl font-medium text-gray-900">{lastDate || '--'}</div>
+              <div className="text-xs text-gray-400 mt-1">prochain dans ~30 jours</div>
+            </div>
+            {prochaineSerie && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="text-xs text-amber-600 mb-1 font-medium">Prochaine serie a scrapper</div>
+                <div className="text-sm font-medium text-gray-900">{prochaineSerie.nom_fr}</div>
+                <div className="text-xs text-amber-600 mt-1">
+                  Dernier scraping il y a {prochaineSerie.joursDepuis}j ({prochaineSerie.lastDate})
+                </div>
               </div>
-            ))}
+            )}
           </div>
 
-          {/* Camembert + Top cartes + Portefeuille */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-
-            {/* Camembert */}
+          {/* Camembert + Top cartes */}
+          <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3 self-start">Répartition par bloc</div>
+              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3 self-start">Repartition</div>
               <PieChart wizards={nbWizards} ev={nbEV} />
               <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-400"></div>Wizards ({nbWizards})</div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-green-600"></div>EV ({nbEV})</div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-blue-400"></div>Wizards ({nbWizards})
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-green-600"></div>EV ({nbEV})
+                </div>
               </div>
             </div>
 
-            {/* Top 5 cartes tendance */}
             <div className="bg-white border border-gray-200 rounded-xl p-4 col-span-2">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Top 5 — Meilleure progression</div>
+              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Top 5 -- Meilleure progression</div>
               {topCartes.length === 0 ? (
-                <div className="text-sm text-gray-400 text-center py-4">Pas encore assez de données de tendance</div>
+                <div className="text-sm text-gray-400 text-center py-4">Pas encore assez de donnees de tendance</div>
               ) : (
                 <div className="space-y-2">
                   {topCartes.map((c, i) => {
@@ -278,17 +266,17 @@ export default function Dashboard() {
                       <Link key={c.id} href={`/carte/${c.id}`} className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-1.5 transition-colors">
                         <div className="text-xs font-medium text-gray-300 w-4">#{i + 1}</div>
                         <div className="w-8 h-10 bg-gray-50 rounded flex-shrink-0 overflow-hidden flex items-center justify-center">
-                          {url ? <img src={url} alt={c.nom_fr} className="h-full object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} /> : <span className="text-gray-300 text-xs">🃏</span>}
+                          {url ? <img src={url} alt={c.nom_fr} className="h-full object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} /> : <span className="text-gray-300 text-xs">?</span>}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-gray-900 truncate">{c.nom_fr}</div>
-                          <div className="text-xs text-gray-400">{c.serie.nom_fr} · N°{c.numero}</div>
+                          <div className="text-xs text-gray-400">{c.serie.nom_fr} N{c.numero}</div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <div className="text-sm font-medium text-green-600">↑{c.tendancePct}%</div>
+                          <div className="text-sm font-medium text-green-600">+{c.tendancePct}%</div>
                           <div className="text-xs text-gray-400">{fmt(c.prixActuel)}</div>
                         </div>
-                        <div className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-medium flex-shrink-0">
+                        <div className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-medium">
                           {c.score}
                         </div>
                       </Link>
@@ -299,14 +287,14 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Résumé portefeuille si données */}
+          {/* Resume portefeuille */}
           {portfolioStats && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
-              <div className="flex items-center justify-between">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
                 <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Portefeuille</div>
-                <Link href="/portefeuille" className="text-xs text-blue-600 hover:underline">Voir tout →</Link>
+                <Link href="/portefeuille" className="text-xs text-blue-600 hover:underline">Voir tout</Link>
               </div>
-              <div className="grid grid-cols-3 gap-4 mt-3">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <div className="text-xs text-gray-400 mb-1">Positions actives</div>
                   <div className="text-lg font-medium text-gray-900">{portfolioStats.nb}</div>
@@ -325,26 +313,44 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Progression par bloc */}
-          {[{ label: 'Bloc Wizards', items: wizards }, { label: 'Bloc Écarlate & Violet', items: ev }].map(bloc => (
-            <div key={bloc.label} className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">{bloc.label}</div>
-              {bloc.items.map(s => {
-                const st = stats[s.id] || { total: 0, completes: 0, pct: 0 }
-                return (
-                  <div key={s.id} className="flex items-center gap-3 mb-3">
-                    <div className="w-44 text-sm text-gray-700 flex-shrink-0">{s.nom_fr}</div>
-                    <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${st.pct}%`, background: st.pct === 100 ? '#639922' : st.pct > 0 ? '#BA7517' : '#B4B2A9' }} />
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium min-w-20 text-center ${st.pct === 100 ? 'bg-green-100 text-green-800' : st.pct > 0 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-500'}`}>
-                      {st.pct === 100 ? 'Terminé' : st.pct > 0 ? `${st.pct}%` : 'En attente'}
-                    </span>
+          {/* Tableau scraping par serie */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Dernier scraping par serie</div>
+            <div className="grid grid-cols-2 gap-x-8">
+              {[
+                { label: 'Bloc Wizards', items: series.filter(s => s.bloc === 'Wizards') },
+                { label: 'Bloc EV', items: series.filter(s => s.bloc === 'EV') }
+              ].map(bloc => (
+                <div key={bloc.label}>
+                  <div className="text-xs font-medium text-gray-500 mb-2">{bloc.label}</div>
+                  <div className="space-y-1.5">
+                    {bloc.items.map(s => {
+                      const dernierScraping = lastDateParSerie[s.id] || null
+                      const joursDepuis = dernierScraping
+                        ? Math.floor((Date.now() - new Date(dernierScraping).getTime()) / 86400000)
+                        : null
+                      const couleur = joursDepuis == null ? 'text-gray-300'
+                        : joursDepuis <= 7 ? 'text-green-600'
+                        : joursDepuis <= 20 ? 'text-amber-500'
+                        : 'text-red-500'
+                      return (
+                        <div key={s.id} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
+                          <span className="text-sm text-gray-700">{s.nom_fr}</span>
+                          <span className={`text-xs font-medium ${couleur}`}>
+                            {dernierScraping
+                              ? joursDepuis === 0 ? "Aujourd'hui"
+                              : joursDepuis === 1 ? 'Il y a 1 jour'
+                              : `Il y a ${joursDepuis}j`
+                              : '--'}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
-                )
-              })}
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </>
       )}
     </div>
