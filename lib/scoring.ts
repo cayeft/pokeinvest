@@ -145,35 +145,35 @@ export function fmt(v: number | null | undefined): string {
   return v.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'
 }
 
-// Correspondance slug_fr Cardmarket -> {serie, set} TCGdex
-// Format URL: https://assets.tcgdex.net/en/{serie}/{set}/{numero}/high.png
-const SLUG_TO_TCGDEX: Record<string, { serie: string; set: string }> = {
-  'Base-Set':          { serie: 'base',    set: 'base1'   },
-  'Jungle':            { serie: 'base',    set: 'base2'   },
-  'Fossil':            { serie: 'base',    set: 'base3'   },
-  'Team-Rocket':       { serie: 'base',    set: 'base5'   },
-  'Neo-Genesis':       { serie: 'neo',     set: 'neo1'    },
-  'Neo-Discovery':     { serie: 'neo',     set: 'neo2'    },
-  'Neo-Revelation':    { serie: 'neo',     set: 'neo3'    },
-  'Neo-Destiny':       { serie: 'neo',     set: 'neo4'    },
-  'Expedition-Base-Set': { serie: 'e-card', set: 'ecard1' },
-  'Aquapolis':         { serie: 'e-card',  set: 'ecard2'  },
-  'Scarlet-Violet':    { serie: 'sv',      set: 'sv1'     },
-  'Paldea-Evolved':    { serie: 'sv',      set: 'sv2'     },
-  'Obsidian-Flames':   { serie: 'sv',      set: 'sv3'     },
-  'Paradox-Rift':      { serie: 'sv',      set: 'sv4'     },
-  'Temporal-Forces':   { serie: 'sv',      set: 'sv5'     },
-  'Twilight-Masquerade': { serie: 'sv',    set: 'sv6'     },
-  'Paldean-Fates':     { serie: 'sv',      set: 'sv3pt5'  },
-  'Surging-Sparks':    { serie: 'sv',      set: 'sv8'     },
-  'Stellar-Crown':     { serie: 'sv',      set: 'sv7'     },
-  'Journey-Together':  { serie: 'sv',      set: 'sv9'     },
+// Correspondance slug_fr Cardmarket -> set ID pokemontcg.io
+// Format URL: https://images.pokemontcg.io/{setId}/{numero}.png
+const SLUG_TO_PTCGIO: Record<string, string> = {
+  'Base-Set':            'base1',
+  'Jungle':              'base2',
+  'Fossil':              'base3',
+  'Team-Rocket':         'base5',
+  'Neo-Genesis':         'neo1',
+  'Neo-Discovery':       'neo2',
+  'Neo-Revelation':      'neo3',
+  'Neo-Destiny':         'neo4',
+  'Expedition-Base-Set': 'ecard1',
+  'Aquapolis':           'ecard2',
+  'Scarlet-Violet':      'sv1',
+  'Paldea-Evolved':      'sv2',
+  'Obsidian-Flames':     'sv3',
+  'Paradox-Rift':        'sv4',
+  'Temporal-Forces':     'sv5',
+  'Twilight-Masquerade': 'sv6',
+  'Paldean-Fates':       'sv3pt5',
+  'Surging-Sparks':      'sv8',
+  'Stellar-Crown':       'sv7',
+  'Journey-Together':    'sv9',
 }
 
 export function imgUrl(slugFr: string | null, serieSlug: string | null, numero: string): string | null {
   if (!serieSlug) return null
-  const tcgdex = SLUG_TO_TCGDEX[serieSlug]
-  if (!tcgdex) return null
+  const setId = SLUG_TO_PTCGIO[serieSlug]
+  if (!setId) return null
   const num = numero.replace(/^0+/, '') || numero
-  return `https://assets.tcgdex.net/en/${tcgdex.serie}/${tcgdex.set}/${num}/high.png`
+  return `https://images.pokemontcg.io/${setId}/${num}.png`
 }
