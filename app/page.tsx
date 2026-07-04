@@ -99,6 +99,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [topCartes, setTopCartes] = useState<TopCarte[]>([])
   const [portfolioStats, setPortfolioStats] = useState<{ valeur: number; pnl: number; nb: number } | null>(null)
+  const [lastDateParSerie, setLastDateParSerie] = useState<Record<number, string>>({})
 
   useEffect(() => {
     async function load() {
@@ -184,6 +185,18 @@ export default function Dashboard() {
         }, 0)
         setPortfolioStats({ valeur: valeurTotale, pnl: valeurTotale - coutTotal, nb: portData.length })
       }
+
+      // Date du dernier scraping par série
+      const dateParSerie: Record<number, string> = {}
+      for (const c of cartesData) {
+        const rows = pm[c.id] || []
+        for (const r of rows) {
+          if (!dateParSerie[c.serie_id] || r.date_scrape > dateParSerie[c.serie_id]) {
+            dateParSerie[c.serie_id] = r.date_scrape
+          }
+        }
+      }
+      setLastDateParSerie(dateParSerie)
 
       const totalC = cartesData.length
       const totalCo = cartesData.filter(c => (pm[c.id]?.length || 0) >= 5).length
