@@ -12,51 +12,102 @@ const PRICE_COLORS: Record<string, string> = {
 
 const ETATS = ['MT', 'NM', 'EX', 'GD', 'LP'] as const
 
-function LineChart({ points, color }: { points: { date: string; prix: number | null }[]; color: string }) {
-  const valides = points
-    .map((p, i) => ({ ...p, i }))
-    .filter(p => p.prix != null) as { date: string; prix: number; i: number }[]
+const PRICE_COLORS_CHART: Record<string, string> = {
+  MT: '#639922', NM: '#378ADD', EX: '#BA7517', GD: '#E24B4A', LP: '#888780'
+}
 
-  if (valides.length < 2) return null
+function MultiLineChart({ hist }: { hist: { date: string; prix: Record<string, number | null> }[] }) {
+  if (hist.length < 2) return null
 
   const W = 600
-  const H = 160
-  const padX = 12
-  const padY = 16
+  const H = 200
+  const padX = 50
+  const padY = 20
+  const chartW = W - padX - 16
+  const chartH = H - padY * 2
 
-  const xs = points.map((_, i) => padX + (i / (points.length - 1)) * (W - padX * 2))
-  const prices = valides.map(v => v.prix)
-  const maxP = Math.max(...prices)
-  const minP = Math.min(...prices)
+  const etats = ['MT', 'NM', 'EX', 'GD', 'LP'] as const
+
+  // Toutes les valeurs non nulles pour calculer min/max
+  const allPrices = etats.flatMap(e => hist.map(h => h.prix[e]).filter((v): v is number => v != null))
+  if (allPrices.length === 0) return null
+  const maxP = Math.max(...allPrices)
+  const minP = Math.min(...allPrices)
   const range = Math.max(maxP - minP, maxP * 0.05, 1)
 
-  const yFor = (v: number) => H - padY - ((v - minP) / range) * (H - padY * 2)
+  const xFor = (i: number) => padX + (i / (hist.length - 1)) * chartW
+  const yFor = (v: number) => padY + chartH - ((v - minP) / range) * chartH
 
-  const pathPts = valides.map(v => `${xs[v.i]},${yFor(v.prix)}`)
-  const linePath = `M ${pathPts.join(' L ')}`
-  const areaPath = `M ${xs[valides[0].i]},${H - padY} L ${pathPts.join(' L ')} L ${xs[valides[valides.length - 1].i]},${H - padY} Z`
+  // Formatage prix pour les labels Y
+  const fmtY = (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k€` : `${v.toFixed(0)}€`
+
+  // Grilles Y
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => minP + f * range)
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
-      <defs>
-        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
+        {/* Grilles horizontales */}
+        {yTicks.map((v, i) => (
+          <g key={i}>
+            <line x1={padX} x2={W - 16} y1={yFor(v)} y2={yFor(v)} stroke="#F0EFEA" strokeWidth="1" />
+            <text x={padX - 4} y={yFor(v) + 4} textAnchor="end" fontSize="9" fill="#AAA">{fmtY(v)}</text>
+          </g>
+        ))}
 
-      {/* lignes de grille horizontales legeres */}
-      {[0.25, 0.5, 0.75].map(f => (
-        <line key={f} x1={padX} x2={W - padX} y1={padY + f * (H - padY * 2)} y2={padY + f * (H - padY * 2)} stroke="#F0EFEA" strokeWidth="1" />
-      ))}
+        {/* Dates en X */}
+        {hist.map((h, i) => (
+          <text key={i} x={xFor(i)} y={H - 4} textAnchor="middle" fontSize="9" fill="#BBB">
+            {h.date.slice(5)} {/* MM-DD */}
+          </text>
+        ))}
 
-      <path d={areaPath} fill="url(#areaGrad)" />
-      <path d={linePath} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {/* Ligne par état */}
+        {etats.map(etat => {
+          const color = PRICE_COLORS_CHART[etat]
+          const points = hist
+            .map((h, i) => ({ i, v: h.prix[etat] }))
+            .filter((p): p is { i: number; v: number } => p.v != null)
 
-      {valides.map(v => (
-        <circle key={v.i} cx={xs[v.i]} cy={yFor(v.prix)} r="4" fill="white" stroke={color} strokeWidth="2.5" />
-      ))}
-    </svg>
+          if (points.length < 2) return null
+
+          const pathD = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${xFor(p.i)} ${yFor(p.v)}`).join(' ')
+
+          return (
+            <g key={etat}>
+              <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
+              {points.map(p => (
+                <circle key={p.i} cx={xFor(p.i)} cy={yFor(p.v)} r="3.5" fill="white" stroke={color} strokeWidth="2" />
+              ))}
+            </g>
+          )
+        })}
+      </svg>
+
+      {/* Légende */}
+      <div className="flex gap-4 justify-center mt-2 flex-wrap">
+        {etats.map(etat => {
+          const hasData = hist.some(h => h.prix[etat] != null)
+          if (!hasData) return null
+          const dernierPrix = [...hist].reverse().find(h => h.prix[etat] != null)?.prix[etat]
+          const premierPrix = hist.find(h => h.prix[etat] != null)?.prix[etat]
+          const tendance = dernierPrix && premierPrix && premierPrix > 0
+            ? Math.round((dernierPrix / premierPrix - 1) * 1000) / 10
+            : null
+          return (
+            <div key={etat} className="flex items-center gap-1.5 text-xs">
+              <div className="w-3 h-0.5 rounded" style={{ background: PRICE_COLORS_CHART[etat] }}></div>
+              <span className="text-gray-600 font-medium">{etat}</span>
+              {tendance != null && (
+                <span className={tendance >= 0 ? 'text-green-600' : 'text-red-500'}>
+                  {tendance >= 0 ? '↑' : '↓'}{Math.abs(tendance)}%
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -66,7 +117,6 @@ export default function FicheCarte() {
   const [serie, setSerie] = useState<any>(null)
   const [prixRows, setPrixRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [etatGraph, setEtatGraph] = useState<typeof ETATS[number]>('NM')
 
   useEffect(() => {
     async function load() {
@@ -104,19 +154,7 @@ export default function FicheCarte() {
     { label: 'Tendance (moy. tous états)', val: sc.tendance, max: 35 },
   ]
 
-  // Données du graphique pour l'état sélectionné
-  const graphHist = hist.map(h => ({ date: h.date, prix: h.prix[etatGraph] }))
-  const graphValides = graphHist.filter(h => h.prix != null) as { date: string; prix: number }[]
 
-  // Tendance par état individuel (pour affichage détaillé)
-  const tendanceParEtat = ETATS.map(etat => {
-    const valides = hist.map(h => h.prix[etat]).filter((v): v is number => v != null)
-    if (valides.length < 2) return { etat, pct: null }
-    const premier = valides[0]
-    const dernier = valides[valides.length - 1]
-    if (!premier) return { etat, pct: null }
-    return { etat, pct: Math.round((dernier / premier - 1) * 1000) / 10 }
-  })
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -186,24 +224,18 @@ export default function FicheCarte() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Prix par état &amp; tendance individuelle</div>
-        {ETATS.map(etat => {
-          const v = prix[etat]
-          const pct = v ? Math.round(v / maxP * 100) : 0
-          const t = tendanceParEtat.find(x => x.etat === etat)
-          return (
-            <div key={etat} className="flex items-center gap-3 mb-2.5">
-              <div className="w-8 text-xs text-gray-500">{etat}</div>
-              <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: PRICE_COLORS[etat] }} />
+        <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Prix actuels par état</div>
+        <div className="grid grid-cols-5 gap-2">
+          {ETATS.map(etat => {
+            const v = prix[etat]
+            return (
+              <div key={etat} className="text-center p-2 bg-gray-50 rounded-lg">
+                <div className="text-xs font-medium mb-1" style={{ color: PRICE_COLORS[etat] }}>{etat}</div>
+                <div className="text-sm font-medium text-gray-900">{fmt(v)}</div>
               </div>
-              <div className="text-sm font-medium text-gray-900 w-20 text-right">{fmt(v)}</div>
-              <div className={`text-xs w-14 text-right ${t?.pct == null ? 'text-gray-300' : t.pct >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {t?.pct == null ? '—' : `${t.pct >= 0 ? '↑' : '↓'}${Math.abs(t.pct)}%`}
-              </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
@@ -220,46 +252,12 @@ export default function FicheCarte() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Évolution du prix</div>
-          <div className="flex gap-1">
-            {ETATS.map(etat => (
-              <button
-                key={etat}
-                onClick={() => setEtatGraph(etat)}
-                className={`text-xs px-2 py-1 rounded-md font-medium ${
-                  etatGraph === etat ? 'text-white' : 'text-gray-500 bg-gray-50 hover:bg-gray-100'
-                }`}
-                style={etatGraph === etat ? { background: PRICE_COLORS[etat] } : {}}
-              >
-                {etat}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {graphValides.length > 1 ? (
-          <>
-            <LineChart points={graphHist} color={PRICE_COLORS[etatGraph]} />
-            <div className="text-sm text-gray-600 mt-3">
-              {graphHist.map((h, i) => (
-                <div key={h.date} className="flex justify-between py-1.5 border-b border-gray-50 last:border-0">
-                  <span className="text-gray-400">{h.date}</span>
-                  <span className="font-medium flex items-center gap-2">
-                    {fmt(h.prix)}
-                    {i > 0 && graphHist[i-1].prix && h.prix && (
-                      <span className={`text-xs ${h.prix >= graphHist[i-1].prix! ? 'text-green-600' : 'text-red-500'}`}>
-                        {h.prix >= graphHist[i-1].prix! ? '↑' : '↓'} {Math.abs(Math.round((h.prix / graphHist[i-1].prix! - 1) * 1000) / 10)}%
-                      </span>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
+        <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Évolution des prix — tous états</div>
+        {hist.length >= 2 ? (
+          <MultiLineChart hist={hist} />
         ) : (
-          <div className="text-sm text-gray-400 text-center py-4 bg-gray-50 rounded-lg">
-            Pas assez de données pour l'état {etatGraph} — essaie un autre état ou attends le prochain scraping.
+          <div className="text-sm text-gray-400 text-center py-6 bg-gray-50 rounded-lg">
+            1 seul point de données — la courbe s'enrichira après chaque scraping mensuel.
           </div>
         )}
       </div>
