@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
@@ -72,7 +72,7 @@ export default function Cartes() {
     load()
   }, [])
 
-  // Stats par série pour les briques
+  // Stats par sÃ©rie pour les briques
   const serieStats = useMemo(() => {
     const stats: Record<number, { total: number; avgScore: number; avgTendance: number | null; topCard: Carte | null }> = {}
     for (const serie of series) {
@@ -95,7 +95,7 @@ export default function Cartes() {
 
       stats[serie.id] = {
         total: cartesSerie.length,
-        avgScore: cartesSerie.length > 0 ? Math.round(totalScore / carteserie.length) : 0,
+        avgScore: cartesSerie.length > 0 ? Math.round(totalScore / cartesSerie.length) : 0,
         avgTendance: nbTendance > 0 ? Math.round(totalTendance / nbTendance * 10) / 10 : null,
         topCard,
       }
@@ -103,7 +103,7 @@ export default function Cartes() {
     return stats
   }, [series, cartes, prices])
 
-  // Cartes de la série sélectionnée, triées
+  // Cartes de la sÃ©rie sÃ©lectionnÃ©e, triÃ©es
   const cartesSelectionnees = useMemo(() => {
     if (!selectedSerie) return []
     const q = search.toLowerCase()
@@ -142,12 +142,12 @@ export default function Cartes() {
     </div>
   )
 
-  // Vue série sélectionnée
+  // Vue sÃ©rie sÃ©lectionnÃ©e
   if (selectedSerie) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Dashboard</Link>
+          <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">â† Dashboard</Link>
           <span className="text-gray-300">/</span>
           <button onClick={() => { setSelectedSerie(null); setSearch(''); setSortMode('numero') }} className="text-gray-400 hover:text-gray-600 text-sm">Cartes</button>
           <span className="text-gray-300">/</span>
@@ -157,16 +157,16 @@ export default function Cartes() {
         <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
           <input
             type="text"
-            placeholder="Rechercher dans cette série..."
+            placeholder="Rechercher dans cette sÃ©rie..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="flex-1 min-w-48 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400"
           />
           <div className="flex gap-2">
             {([
-              { key: 'numero', label: '# Numéro' },
-              { key: 'best', label: '↑ Meilleure progression' },
-              { key: 'worst', label: '↓ Moins bonne progression' },
+              { key: 'numero', label: '# NumÃ©ro' },
+              { key: 'best', label: 'â†‘ Meilleure progression' },
+              { key: 'worst', label: 'â†“ Moins bonne progression' },
             ] as { key: SortMode; label: string }[]).map(opt => (
               <button
                 key={opt.key}
@@ -201,10 +201,10 @@ export default function Cartes() {
                   {url ? (
                     <img src={url} alt={c.nom_fr} className="h-full object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                   ) : (
-                    <span className="text-gray-300 text-2xl">🃏</span>
+                    <span className="text-gray-300 text-2xl">ðŸƒ</span>
                   )}
                 </div>
-                <div className="text-xs text-gray-400 mb-0.5">N°{c.numero}</div>
+                <div className="text-xs text-gray-400 mb-0.5">NÂ°{c.numero}</div>
                 <div className="text-sm font-medium text-gray-900 mb-2 leading-tight">{c.nom_fr}</div>
                 <div className="flex justify-between items-end">
                   <div>
@@ -213,7 +213,7 @@ export default function Cartes() {
                       GD
                       {sc.tendancePct != null && (
                         <span className={sc.tendancePct >= 0 ? 'text-green-600' : 'text-red-500'}>
-                          {sc.tendancePct >= 0 ? '↑' : '↓'}{Math.abs(sc.tendancePct)}%
+                          {sc.tendancePct >= 0 ? 'â†‘' : 'â†“'}{Math.abs(sc.tendancePct)}%
                         </span>
                       )}
                     </div>
@@ -232,19 +232,19 @@ export default function Cartes() {
     )
   }
 
-  // Vue briques par série
+  // Vue briques par sÃ©rie
   const wizards = series.filter(s => s.bloc === 'Wizards')
   const ev = series.filter(s => s.bloc === 'EV')
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Dashboard</Link>
+        <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">â† Dashboard</Link>
         <span className="text-gray-300">/</span>
         <h1 className="text-xl font-medium text-gray-900">Cartes</h1>
       </div>
 
-      {[{ label: 'Bloc Wizards', items: wizards }, { label: 'Bloc Écarlate & Violet', items: ev }].map(bloc => (
+      {[{ label: 'Bloc Wizards', items: wizards }, { label: 'Bloc Ã‰carlate & Violet', items: ev }].map(bloc => (
         <div key={bloc.label} className="mb-8">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">{bloc.label}</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -258,12 +258,12 @@ export default function Cartes() {
                   onClick={() => { setSelectedSerie(serie); setSortMode('numero'); setSearch('') }}
                   className="bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-sm transition-all text-left group"
                 >
-                  {/* Image de la meilleure carte comme aperçu */}
+                  {/* Image de la meilleure carte comme aperÃ§u */}
                   <div className="w-full h-20 bg-gray-50 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
                     {topUrl ? (
                       <img src={topUrl} alt={st.topCard?.nom_fr} className="h-full object-contain group-hover:scale-105 transition-transform" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                     ) : (
-                      <span className="text-gray-300 text-xl">🃏</span>
+                      <span className="text-gray-300 text-xl">ðŸƒ</span>
                     )}
                   </div>
 
@@ -276,7 +276,7 @@ export default function Cartes() {
                     </div>
                     {st.avgTendance != null && (
                       <span className={`text-xs font-medium ${st.avgTendance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {st.avgTendance >= 0 ? '↑' : '↓'}{Math.abs(st.avgTendance)}%
+                        {st.avgTendance >= 0 ? 'â†‘' : 'â†“'}{Math.abs(st.avgTendance)}%
                       </span>
                     )}
                   </div>
