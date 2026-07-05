@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -38,7 +38,7 @@ async function fetchAllPages(table: string, select: string) {
   return all
 }
 
-export default function Cartes() {
+function CartesInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [cartes, setCartes] = useState<Carte[]>([])
@@ -387,5 +387,17 @@ export default function Cartes() {
         </div>
       ))}
     </div>
+  )
+}
+
+export default function Cartes() {
+  return (
+    <Suspense fallback={
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>Chargement...</div>
+      </div>
+    }>
+      <CartesInner />
+    </Suspense>
   )
 }
