@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -152,10 +152,10 @@ export default function Dashboard() {
         const px = getPrixFromRows(rows)
         const serie = (c.series as any)
         const sc = computeScore(px, parseInt(c.numero) <= 16, serie?.bloc || '', hist, pm[c.id] || [])
-        if (sc.reco !== 'ACHETER' && (sc.tendancePct == null || sc.tendancePct <= 0)) continue
+        if (sc.tendancePct == null || sc.tendancePct <= 0) continue
         tops.push({ id: c.id, nom_fr: c.nom_fr, numero: c.numero, slug_carte_fr: c.slug_carte_fr,
           serie: { nom_fr: serie?.nom_fr || '', slug_fr: serie?.slug_fr || '' },
-          tendancePct: sc.tendancePct, prixActuel: px.NM ?? px.EX ?? px.GD ?? null, score: sc.total })
+          tendancePct: sc.tendancePct ?? 0, prixActuel: px.NM ?? px.EX ?? px.GD ?? null, score: sc.total })
       }
       tops.sort((a, b) => b.tendancePct - a.tendancePct); // tri par tendance
       setTopCartes(tops.slice(0, 5))
@@ -214,7 +214,7 @@ export default function Dashboard() {
         {/* Ligne 1 : metriques */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: '1rem' }}>
           {[
-            { label: 'Prix collectes', value: totalPrix.toLocaleString(), sub: `${totalCards.toLocaleString()} cartes · 5 etats`, icon: 'ti-database' },
+            { label: 'Prix collectes', value: totalPrix.toLocaleString(), sub: `${totalCards.toLocaleString()} cartes Â· 5 etats`, icon: 'ti-database' },
             { label: 'Dernier scraping', value: lastDate || '--', sub: 'prochain dans ~30 jours', icon: 'ti-refresh' },
           ].map(m => (
             <div key={m.label} style={{ background: 'var(--surface-2)', border: '.5px solid var(--border)', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -257,7 +257,7 @@ export default function Dashboard() {
 
           {/* Top 5 */}
           {card(<>
-            {sectionLabel('Top 5 — Meilleure progression')}
+            {sectionLabel('Top 5 â€” Meilleure progression')}
             {topCartes.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '1.5rem', fontSize: 13, color: 'var(--text-muted)', background: 'var(--surface-1)', borderRadius: 8 }}>
                 Pas encore assez de donnees de tendance
@@ -277,7 +277,7 @@ export default function Dashboard() {
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nom_fr}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.serie.nom_fr} · N°{c.numero}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.serie.nom_fr} Â· NÂ°{c.numero}</div>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-success)' }}>+{c.tendancePct}%</div>
@@ -299,7 +299,7 @@ export default function Dashboard() {
             {card(<>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 {sectionLabel('Portefeuille')}
-                <Link href="/portefeuille" style={{ fontSize: 12, color: 'var(--text-accent)', textDecoration: 'none' }}>Voir tout →</Link>
+                <Link href="/portefeuille" style={{ fontSize: 12, color: 'var(--text-accent)', textDecoration: 'none' }}>Voir tout â†’</Link>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                 {[
