@@ -104,7 +104,6 @@ export default function Cartes() {
       let totalTendance = 0
       let nbTendance = 0
       let topCard: Carte | null = null
-      let topScore = -1
       for (const c of cartesSerie) {
         const p = getPrixFromRows(prices[c.id] || [])
         const hist = getHistAll(prices[c.id] || [])
@@ -112,8 +111,9 @@ export default function Cartes() {
         const sc = computeScore(p, isHolo, serie.bloc, hist)
         totalScore += sc.total
         if (sc.tendancePct != null) { totalTendance += sc.tendancePct; nbTendance++ }
-        if (sc.total > topScore) { topScore = sc.total; topCard = c }
       }
+      // Carte n°1 comme image de la serie
+      topCard = cartesSerie.find(c => c.numero === '001' || c.numero === '01' || c.numero === '1') || cartesSerie[0] || null
       stats[serie.id] = {
         total: cartesSerie.length,
         avgScore: cartesSerie.length > 0 ? Math.round(totalScore / cartesSerie.length) : 0,
