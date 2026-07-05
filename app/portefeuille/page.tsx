@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { getPrixFromRows, fmt } from '@/lib/scoring'
 
 const ETATS = ['MT', 'NM', 'EX', 'GD', 'LP'] as const
@@ -60,7 +61,10 @@ function imgUrl(slug: string | null, serieSlug: string | null, numero: string): 
 }
 
 export default function Portefeuille() {
+  const router = useRouter()
+  const supabase = createSupabaseBrowserClient()
   const [positions, setPositions] = useState<Position[]>([])
+  const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -72,7 +76,16 @@ export default function Portefeuille() {
   const [showVente, setShowVente] = useState<number | null>(null)
   const [venteForm, setVenteForm] = useState({ prix_vente: '', date_vente: new Date().toISOString().split('T')[0] })
 
-  useEffect(() => { loadPositions() }, [])
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { router.replace('/auth'); return }
+      setUserId(session.user.id)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (userId) loadPositions()
+  }, [userId])
 
   async function loadPositions() {
     setLoading(true)
@@ -155,6 +168,7 @@ export default function Portefeuille() {
       date_achat: form.date_achat,
       notes: form.notes || null,
       statut: 'actif',
+      user_id: userId,
     })
     setShowAdd(false)
     setSelectedCarte(null)
