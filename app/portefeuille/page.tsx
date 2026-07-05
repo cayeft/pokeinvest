@@ -89,9 +89,11 @@ export default function Portefeuille() {
 
   async function loadPositions() {
     setLoading(true)
+    if (!userId) { setLoading(false); return }
     const { data: posData } = await supabase
       .from('portefeuille')
       .select('*,carte:cartes(id,nom_fr,numero,slug_carte_fr,series(nom_fr,slug_fr))')
+      .eq('user_id', userId)
       .order('date_achat', { ascending: false })
 
     if (!posData) { setLoading(false); return }
