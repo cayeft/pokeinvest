@@ -109,7 +109,7 @@ export default function FicheCarte() {
   const prix = getPrixFromRows(prixRows)
   const hist = getHistAll(prixRows)
   const isHolo = parseInt(carte.numero) <= 16
-  const sc = computeScore(prix, isHolo, serie?.bloc || '', hist)
+  const sc = computeScore(prix, isHolo, serie?.bloc || '', hist, prixRows)
   const url = imgUrl(carte.slug_carte_fr, serie?.slug_fr, carte.numero)
   const nm = prix.NM ?? prix.EX
   const gd = prix.GD ?? prix.LP
@@ -117,10 +117,10 @@ export default function FicheCarte() {
   const backUrl = serie ? `/cartes?serie=${serie.slug_fr}` : '/cartes'
 
   const recoStyle = sc.recoColor === 'green'
-    ? { bg: 'var(--bg-success)', border: 'var(--border-success)', color: 'var(--text-success)' }
-    : sc.recoColor === 'amber'
-    ? { bg: 'var(--bg-warning)', border: 'var(--border-warning)', color: 'var(--text-warning)' }
-    : { bg: 'var(--surface-1)', border: 'var(--border)', color: 'var(--text-muted)' }
+    ? { bg: 'var(--bg-success)', border: 'var(--border-success)', color: 'var(--text-success)', icon: 'ti-trending-up', label: 'ACHETER' }
+    : sc.recoColor === 'red'
+    ? { bg: '#FCEAEA', border: '#F5AAAA', color: 'var(--text-danger)', icon: 'ti-trending-down', label: 'VENDRE' }
+    : { bg: 'var(--surface-1)', border: 'var(--border)', color: 'var(--text-muted)', icon: 'ti-clock', label: 'ATTENDRE' }
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: '1.5rem 1rem' }}>
@@ -152,14 +152,14 @@ export default function FicheCarte() {
           <div style={{ background: 'var(--surface-2)', border: '.5px solid var(--border)', borderRadius: 10, padding: '0.75rem', marginBottom: '0.75rem' }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>Score d'investissement</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 10 }}>
-              <span style={{ fontSize: 32, fontWeight: 500, color: 'var(--text-primary)' }}>{sc.total}</span>
+              <span style={{ fontSize: 32, fontWeight: 500, color: 'var(--text-primary)' }}>{sc.scoreAchat}</span>
               <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>/100</span>
             </div>
             {[
-              { label: 'Rareté', val: sc.rarete, max: 25 },
-              { label: 'Ecart NM/GD', val: sc.ecart, max: 20 },
-              { label: 'Valeur marche', val: sc.marche, max: 20 },
-              { label: 'Tendance', val: sc.tendance, max: 35 },
+              { label: 'Tendance', val: Math.min(35, Math.max(0, sc.tendancePct != null ? (sc.tendancePct >= 20 ? 35 : sc.tendancePct >= 10 ? 25 : sc.tendancePct >= 5 ? 15 : sc.tendancePct >= 0 ? 5 : 0) : 0)), max: 35 },
+              { label: 'Rarete marche', val: Math.round(sc.rareteMarcheScore * 0.25), max: 25 },
+              { label: 'Momentum', val: Math.min(20, Math.max(0, sc.momentumScore >= 10 ? 20 : sc.momentumScore >= 5 ? 14 : sc.momentumScore >= 0 ? 7 : 0)), max: 20 },
+              { label: 'Ecart NM/GD', val: Math.min(20, Math.max(0, sc.ecartScore >= 100 ? 20 : sc.ecartScore >= 50 ? 15 : sc.ecartScore >= 25 ? 10 : sc.ecartScore >= 10 ? 5 : 2)), max: 20 },
             ].map(r => (
               <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
                 <div style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)' }}>{r.label}</div>
@@ -173,14 +173,23 @@ export default function FicheCarte() {
 
           {/* Recommandation */}
           <div style={{ background: recoStyle.bg, border: `.5px solid ${recoStyle.border}`, borderRadius: 10, padding: '0.75rem' }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: recoStyle.color, marginBottom: 4 }}>
-              {sc.reco === 'Surveiller' ? '👁 Surveiller' : '⏳ Attendre'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <i className={`ti ${recoStyle.icon}`} style={{ fontSize: 16, color: recoStyle.color }} aria-hidden="true"></i>
+              <span style={{ fontSize: 14, fontWeight: 700, color: recoStyle.color, letterSpacing: '.04em' }}>{recoStyle.label}</span>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              {hist.length >= 2 && sc.tendancePct != null
-                ? `Tendance sur ${hist.length} points : ${sc.tendancePct >= 0 ? '+' : ''}${sc.tendancePct}% (tous etats)`
-                : 'Donnees insuffisantes — revenez apres le prochain scraping.'}
-            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{sc.recoDetail}</div>
+            {hist.length >= 2 && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <div style={{ flex: 1, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '5px 8px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Signal achat</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-success)' }}>{sc.scoreAchat}/100</div>
+                </div>
+                <div style={{ flex: 1, background: 'rgba(0,0,0,0.04)', borderRadius: 6, padding: '5px 8px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Signal vente</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-danger)' }}>{sc.scoreVente}/100</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

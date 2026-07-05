@@ -151,13 +151,13 @@ export default function Dashboard() {
         if (hist.length < 2) continue
         const px = getPrixFromRows(rows)
         const serie = (c.series as any)
-        const sc = computeScore(px, parseInt(c.numero) <= 16, serie?.bloc || '', hist)
-        if (sc.tendancePct == null || sc.tendancePct <= 0) continue
+        const sc = computeScore(px, parseInt(c.numero) <= 16, serie?.bloc || '', hist, pm[c.id] || [])
+        if (sc.reco !== 'ACHETER' && (sc.tendancePct == null || sc.tendancePct <= 0)) continue
         tops.push({ id: c.id, nom_fr: c.nom_fr, numero: c.numero, slug_carte_fr: c.slug_carte_fr,
           serie: { nom_fr: serie?.nom_fr || '', slug_fr: serie?.slug_fr || '' },
           tendancePct: sc.tendancePct, prixActuel: px.NM ?? px.EX ?? px.GD ?? null, score: sc.total })
       }
-      tops.sort((a, b) => b.tendancePct - a.tendancePct)
+      tops.sort((a, b) => b.tendancePct - a.tendancePct); // tri par tendance
       setTopCartes(tops.slice(0, 5))
 
       // Portefeuille

@@ -6,107 +6,206 @@ export interface Prix {
   LP: number | null
 }
 
-export interface ScoreResult {
-  total: number
-  rarete: number
-  ecart: number
-  marche: number
-  tendance: number
-  tendancePct: number | null
-  reco: 'Surveiller' | 'Attendre'
-  recoColor: 'green' | 'amber' | 'gray'
-}
-
 export interface HistPoint {
   date: string
-  prix: Record<string, number | null> // { MT, NM, EX, GD, LP }
+  prix: Record<string, number | null>
+  nbOffres?: Record<string, number | null>
 }
 
-const ETATS_ORDER = ['MT', 'NM', 'EX', 'GD', 'LP'] as const
+export type Recommandation = 'ACHETER' | 'VENDRE' | 'ATTENDRE'
 
-// Calcule la tendance moyenne pondérée sur TOUS les états disponibles,
-// pas seulement NM. Chaque état qui a au moins 2 points valides contribue.
-function computeTendancePct(hist: HistPoint[]): number | null {
+export interface ScoreResult {
+  reco: Recommandation
+  recoDetail: string
+  scoreAchat: number      // 0-100
+  scoreVente: number      // 0-100
+  tendancePct: number | null
+  rareteMarcheScore: number
+  momentumScore: number
+  ecartScore: number
+  total: number           // score lisibilite legacy (0-100)
+  tendancePct2: number | null  // alias pour compat
+  recoColor: 'green' | 'red' | 'gray'
+}
+
+// Calcule la tendance moyenne sur TOUS les etats (premier vs dernier point valide)
+function calcTendance(hist: HistPoint[]): number | null {
   if (hist.length < 2) return null
-
+  const etats = ['MT', 'NM', 'EX', 'GD', 'LP']
   const variations: number[] = []
-
-  for (const etat of ETATS_ORDER) {
-    const valides = hist
-      .map(h => ({ date: h.date, val: h.prix[etat] }))
-      .filter(h => h.val != null) as { date: string; val: number }[]
-
-    if (valides.length >= 2) {
-      const premier = valides[0].val
-      const dernier = valides[valides.length - 1].val
-      if (premier > 0) {
-        variations.push((dernier / premier - 1) * 100)
-      }
+  for (const etat of etats) {
+    const valides = hist.map(h => h.prix[etat]).filter((v): v is number => v != null)
+    if (valides.length >= 2 && valides[0] > 0) {
+      variations.push((valides[valides.length - 1] / valides[0] - 1) * 100)
     }
   }
-
   if (variations.length === 0) return null
-
-  // Moyenne des variations de tous les états disponibles
-  const moyenne = variations.reduce((a, b) => a + b, 0) / variations.length
-  return Math.round(moyenne * 10) / 10
+  return Math.round(variations.reduce((a, b) => a + b) / variations.length * 10) / 10
 }
 
-export function computeScore(prix: Prix, isHolo: boolean, bloc: string, hist?: HistPoint[]): ScoreResult {
+// Calcule le momentum : tendance sur les 2 derniers points vs tendance globale
+function calcMomentum(hist: HistPoint[]): number | null {
+  if (hist.length < 3) return null
+  const recent = hist.slice(-2)
+  const tendRecente = calcTendance(recent)
+  const tendGlobale = calcTendance(hist)
+  if (tendRecente == null || tendGlobale == null) return null
+  // Momentum positif si tendance recente > tendance globale (acceleration)
+  return Math.round((tendRecente - tendGlobale) * 10) / 10
+}
+
+// Calcule le score de rarete marche : peu d'offres NM + prix eleve = rare
+function calcRareteMarche(prixRows: any[]): number {
+  // Prendre la moyenne des nb_offres sur NM pour le dernier scraping
+  const nmRows = prixRows.filter(r => r.condition?.startsWith('NM') && r.nb_offres != null)
+  if (nmRows.length === 0) return 50 // neutre si pas de donnees
+  const dernierNM = nmRows.sort((a, b) => b.date_scrape.localeCompare(a.date_scrape))[0]
+  const nbOffres = dernierNM.nb_offres || 0
+  // < 5 offres = tres rare, > 50 = abondant
+  if (nbOffres === 0) return 90
+  if (nbOffres < 5) return 80
+  if (nbOffres < 15) return 65
+  if (nbOffres < 30) return 50
+  if (nbOffres < 60) return 35
+  return 20
+}
+
+export function computeScore(
+  prix: Prix,
+  isHolo: boolean,
+  bloc: string,
+  hist?: HistPoint[],
+  prixRows?: any[]
+): ScoreResult {
   const nm = prix.NM ?? prix.EX
   const gd = prix.GD ?? prix.LP
 
-  // Rareté (25 pts)
-  const rarete = isHolo ? 25 : 15
+  // 1. Tendance globale
+  const tendancePct = hist ? calcTendance(hist) : null
 
-  // Écart états NM/GD (20 pts)
-  let ecart = 5
-  if (nm && gd) {
-    ecart = Math.min(20, Math.max(0, Math.round((nm / gd - 1) * 8)))
-  }
+  // 2. Momentum (acceleration recente)
+  const momentum = hist ? calcMomentum(hist) : null
 
-  // Valeur marché (20 pts)
-  const refP = nm ?? gd ?? 0
-  const marche = refP > 200 ? 20 : refP > 50 ? 14 : refP > 10 ? 8 : 4
+  // 3. Rarete de marche (nb offres)
+  const rareteMarche = prixRows ? calcRareteMarche(prixRows) : 50
 
-  // Tendance (35 pts) — moyenne de l'évolution sur TOUS les états (MT, NM, EX, GD, LP)
-  let tendance = 0
-  const tendancePct = hist ? computeTendancePct(hist) : null
+  // 4. Ecart NM/GD
+  const ecartPct = nm && gd ? Math.round((nm / gd - 1) * 100) : 0
+
+  // ── SCORE ACHAT (0-100) ──
+  let scoreAchat = 0
+
+  // Tendance positive (0-35 pts)
   if (tendancePct != null) {
-    if (tendancePct >= 20) tendance = 35
-    else if (tendancePct >= 10) tendance = 28
-    else if (tendancePct >= 3) tendance = 20
-    else if (tendancePct >= -3) tendance = 12
-    else if (tendancePct >= -10) tendance = 6
-    else tendance = 0
+    if (tendancePct >= 20) scoreAchat += 35
+    else if (tendancePct >= 10) scoreAchat += 25
+    else if (tendancePct >= 5) scoreAchat += 15
+    else if (tendancePct >= 0) scoreAchat += 5
+    else if (tendancePct >= -5) scoreAchat += 0
+    else scoreAchat += 0
   }
 
-  const total = Math.min(100, rarete + ecart + marche + tendance)
+  // Rarete marche (0-25 pts)
+  scoreAchat += Math.round(rareteMarche * 0.25)
 
-  let reco: 'Surveiller' | 'Attendre' = 'Attendre'
-  let recoColor: 'green' | 'amber' | 'gray' = 'gray'
+  // Momentum positif = acceleration (0-20 pts)
+  if (momentum != null) {
+    if (momentum >= 10) scoreAchat += 20
+    else if (momentum >= 5) scoreAchat += 14
+    else if (momentum >= 0) scoreAchat += 7
+    else scoreAchat += 0
+  } else {
+    scoreAchat += 7 // neutre si pas assez de donnees
+  }
 
-  if (tendance >= 28 && total >= 60) {
-    reco = 'Surveiller'
+  // Ecart NM/GD eleve = forte demande qualite (0-20 pts)
+  if (ecartPct >= 100) scoreAchat += 20
+  else if (ecartPct >= 50) scoreAchat += 15
+  else if (ecartPct >= 25) scoreAchat += 10
+  else if (ecartPct >= 10) scoreAchat += 5
+  else scoreAchat += 2
+
+  scoreAchat = Math.min(100, Math.max(0, scoreAchat))
+
+  // ── SCORE VENTE (0-100) ──
+  let scoreVente = 0
+
+  // Forte hausse recente = prendre ses benefices (0-40 pts)
+  if (tendancePct != null) {
+    if (tendancePct >= 50) scoreVente += 40
+    else if (tendancePct >= 30) scoreVente += 30
+    else if (tendancePct >= 15) scoreVente += 20
+    else if (tendancePct >= 5) scoreVente += 10
+    else if (tendancePct < -10) scoreVente += 5 // baisse = vendre aussi
+  }
+
+  // Momentum negatif = deceleration/retournement (0-30 pts)
+  if (momentum != null) {
+    if (momentum <= -10) scoreVente += 30
+    else if (momentum <= -5) scoreVente += 20
+    else if (momentum <= 0) scoreVente += 10
+    else scoreVente += 0
+  }
+
+  // Beaucoup d'offres = surabondance (0-30 pts)
+  const antiRarete = 100 - rareteMarche
+  scoreVente += Math.round(antiRarete * 0.30)
+
+  scoreVente = Math.min(100, Math.max(0, scoreVente))
+
+  // ── RECOMMANDATION ──
+  let reco: Recommandation = 'ATTENDRE'
+  let recoDetail = ''
+  let recoColor: 'green' | 'red' | 'gray' = 'gray'
+
+  const hasSufficientData = hist && hist.length >= 2
+
+  if (!hasSufficientData) {
+    reco = 'ATTENDRE'
+    recoDetail = 'Donnees insuffisantes — 2+ points de donnees necessaires.'
+    recoColor = 'gray'
+  } else if (scoreVente >= 60 && scoreVente > scoreAchat) {
+    reco = 'VENDRE'
+    recoDetail = tendancePct && tendancePct >= 15
+      ? `Hausse de +${tendancePct}% — bonne opportunite de prise de benefices.`
+      : `Pression vendeuse elevee — marche potentiellement sature.`
+    recoColor = 'red'
+  } else if (scoreAchat >= 55) {
+    reco = 'ACHETER'
+    recoDetail = tendancePct && tendancePct > 0
+      ? `Tendance positive (+${tendancePct}%) avec rarete de marche favorable.`
+      : `Signal d'achat base sur la rarete et les fondamentaux du marche.`
     recoColor = 'green'
-  } else if (nm && nm > 100) {
-    reco = 'Surveiller'
-    recoColor = 'amber'
-  }
-  if (total >= 50 && recoColor === 'gray') {
-    reco = 'Surveiller'
-    recoColor = 'amber'
+  } else {
+    reco = 'ATTENDRE'
+    recoDetail = 'Signal mixte — pas d\'opportunite claire a ce stade.'
+    recoColor = 'gray'
   }
 
-  return { total, rarete, ecart, marche, tendance, tendancePct, reco, recoColor }
+  // Score legacy pour compat (moyenne ponderee achat/lisibilite)
+  const total = Math.round(scoreAchat * 0.7 + (100 - scoreVente) * 0.3)
+
+  return {
+    reco,
+    recoDetail,
+    scoreAchat,
+    scoreVente,
+    tendancePct,
+    rareteMarcheScore: rareteMarche,
+    momentumScore: momentum ?? 0,
+    ecartScore: ecartPct,
+    total,
+    tendancePct2: tendancePct,
+    recoColor,
+  }
 }
 
 export function getPrixFromRows(rows: any[]): Prix {
-  const map: Record<string, number | null> = {}
+  const map: Record<string, any> = {}
   for (const r of rows) {
     const cond = r.condition?.split(' ')[0]
     if (!cond) continue
-    if (!(cond in map) || (r.date_scrape > (map[cond + '_date'] ?? ''))) {
+    if (!(cond in map) || r.date_scrape > (map[cond + '_date'] ?? '')) {
       map[cond] = r.prix_fr
       map[cond + '_date'] = r.date_scrape
     }
@@ -120,24 +219,20 @@ export function getPrixFromRows(rows: any[]): Prix {
   }
 }
 
-// Construit l'historique complet (tous etats, toutes dates) pour une carte
 export function getHistAll(rows: any[]): HistPoint[] {
   const byDate: Record<string, Record<string, number | null>> = {}
+  const offresByDate: Record<string, Record<string, number | null>> = {}
   for (const r of rows) {
     const cond = r.condition?.split(' ')[0]
     if (!cond) continue
     if (!byDate[r.date_scrape]) byDate[r.date_scrape] = { MT: null, NM: null, EX: null, GD: null, LP: null }
+    if (!offresByDate[r.date_scrape]) offresByDate[r.date_scrape] = { MT: null, NM: null, EX: null, GD: null, LP: null }
     byDate[r.date_scrape][cond] = r.prix_fr
+    offresByDate[r.date_scrape][cond] = r.nb_offres ?? null
   }
   return Object.entries(byDate)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, prix]) => ({ date, prix }))
-}
-
-// Conservé pour compat -- historique NM seul (utilise pour le graphique simple)
-export function getHistNM(rows: any[]): { date: string; prix: number | null }[] {
-  const all = getHistAll(rows)
-  return all.map(h => ({ date: h.date, prix: h.prix.NM }))
+    .map(([date, prix]) => ({ date, prix, nbOffres: offresByDate[date] }))
 }
 
 export function fmt(v: number | null | undefined): string {
@@ -145,29 +240,13 @@ export function fmt(v: number | null | undefined): string {
   return v.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'
 }
 
-// Correspondance slug_fr Cardmarket -> set ID pokemontcg.io
-// Format URL: https://images.pokemontcg.io/{setId}/{numero}.png
 const SLUG_TO_PTCGIO: Record<string, string> = {
-  'Base-Set':            'base1',
-  'Jungle':              'base2',
-  'Fossil':              'base3',
-  'Team-Rocket':         'base5',
-  'Neo-Genesis':         'neo1',
-  'Neo-Discovery':       'neo2',
-  'Neo-Revelation':      'neo3',
-  'Neo-Destiny':         'neo4',
-  'Expedition-Base-Set': 'ecard1',
-  'Aquapolis':           'ecard2',
-  'Scarlet-Violet':      'sv1',
-  'Paldea-Evolved':      'sv2',
-  'Obsidian-Flames':     'sv3',
-  'Paradox-Rift':        'sv4',
-  'Temporal-Forces':     'sv5',
-  'Twilight-Masquerade': 'sv6',
-  'Paldean-Fates':       'sv3pt5',
-  'Surging-Sparks':      'sv8',
-  'Stellar-Crown':       'sv7',
-  'Journey-Together':    'sv9',
+  'Base-Set': 'base1', 'Jungle': 'base2', 'Fossil': 'base3', 'Team-Rocket': 'base5',
+  'Neo-Genesis': 'neo1', 'Neo-Discovery': 'neo2', 'Neo-Revelation': 'neo3', 'Neo-Destiny': 'neo4',
+  'Expedition-Base-Set': 'ecard1', 'Aquapolis': 'ecard2',
+  'Scarlet-Violet': 'sv1', 'Paldea-Evolved': 'sv2', 'Obsidian-Flames': 'sv3',
+  'Paradox-Rift': 'sv4', 'Temporal-Forces': 'sv5', 'Twilight-Masquerade': 'sv6',
+  'Paldean-Fates': 'sv3pt5', 'Surging-Sparks': 'sv8', 'Stellar-Crown': 'sv7', 'Journey-Together': 'sv9',
 }
 
 export function imgUrl(slugFr: string | null, serieSlug: string | null, numero: string): string | null {

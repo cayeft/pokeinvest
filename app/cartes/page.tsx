@@ -107,7 +107,7 @@ function CartesInner() {
         const p = getPrixFromRows(prices[c.id] || [])
         const hist = getHistAll(prices[c.id] || [])
         const isHolo = parseInt(c.numero) <= 16
-        const sc = computeScore(p, isHolo, serie.bloc, hist)
+        const sc = computeScore(p, isHolo, serie.bloc, hist, prices[c.id] || [])
         totalScore += sc.total
         if (sc.tendancePct != null) { totalTendance += sc.tendancePct; nbTendance++ }
       }
@@ -253,7 +253,7 @@ function CartesInner() {
             const p = getPrixFromRows(prices[c.id] || [])
             const hist = getHistAll(prices[c.id] || [])
             const isHolo = parseInt(c.numero) <= 16
-            const sc = computeScore(p, isHolo, serie?.bloc || '', hist)
+            const sc = computeScore(p, isHolo, serie?.bloc || '', hist, prices[c.id] || [])
             const gd = p.GD ?? p.EX ?? p.LP ?? p.NM
             const url = imgUrl(c.slug_carte_fr, serie?.slug_fr, c.numero)
             const owned = portfolio.has(c.id)
@@ -282,10 +282,12 @@ function CartesInner() {
                         <i className="ti ti-check" style={{ fontSize: 11, color: 'var(--text-success)' }} aria-hidden="true"></i>
                       </div>
                     )}
-                    {/* Score */}
-                    {sc.total > 0 && (
-                      <div style={{ position: 'absolute', top: 5, left: 5, fontSize: 10, padding: '2px 6px', borderRadius: 99, background: sc.recoColor === 'green' ? 'var(--bg-success)' : sc.recoColor === 'amber' ? 'var(--bg-warning)' : 'var(--surface-0)', color: sc.recoColor === 'green' ? 'var(--text-success)' : sc.recoColor === 'amber' ? 'var(--text-warning)' : 'var(--text-muted)', fontWeight: 500 }}>
-                        {sc.total}
+                    {/* Recommandation */}
+                    {hist.length >= 2 && (
+                      <div style={{ position: 'absolute', top: 5, left: 5, fontSize: 9, padding: '2px 6px', borderRadius: 99, fontWeight: 700, letterSpacing: '.03em',
+                        background: sc.recoColor === 'green' ? 'var(--bg-success)' : sc.recoColor === 'red' ? '#FCEAEA' : 'var(--surface-0)',
+                        color: sc.recoColor === 'green' ? 'var(--text-success)' : sc.recoColor === 'red' ? 'var(--text-danger)' : 'var(--text-muted)' }}>
+                        {sc.reco}
                       </div>
                     )}
                   </div>
