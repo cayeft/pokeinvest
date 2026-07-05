@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { computeScore, getPrixFromRows, getHistAll, fmt, imgUrl } from '@/lib/scoring'
@@ -38,6 +39,8 @@ async function fetchAllPages(table: string, select: string) {
 }
 
 export default function Cartes() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [cartes, setCartes] = useState<Carte[]>([])
   const [prices, setPrices] = useState<Record<number, any[]>>({})
   const [series, setSeries] = useState<Serie[]>([])
@@ -78,6 +81,12 @@ export default function Cartes() {
       const portIds = new Set((portData.data || []).map((p: any) => p.carte_id))
 
       setSeries(seriesData || [])
+      // Restaurer la serie depuis l'URL si présente
+      const serieSlug = searchParams.get('serie')
+      if (serieSlug && seriesData) {
+        const found = seriesData.find((s: Serie) => s.slug_fr === serieSlug)
+        if (found) setSelectedSerie(found)
+      }
       setCartes(allCartes as unknown as Carte[])
       setPrices(pm)
       setPortfolio(portIds)
@@ -336,7 +345,7 @@ export default function Cartes() {
               return (
                 <button
                   key={serie.id}
-                  onClick={() => { setSelectedSerie(serie); setSortMode('numero'); setSearch('') }}
+                  onClick={() => { setSelectedSerie(serie); setSortMode('numero'); setSearch(''); router.replace(`/cartes?serie=${serie.slug_fr}`, { scroll: false }) }}
                   style={{
                     background: 'var(--surface-2)', border: '.5px solid var(--border)', borderRadius: 12,
                     padding: '1rem', cursor: 'pointer', textAlign: 'left', transition: 'all .15s', width: '100%',
