@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { computeScore, getPrixFromRows, getHistAll, fmt, imgUrl } from '@/lib/scoring'
@@ -40,7 +40,6 @@ async function fetchAllPages(table: string, select: string) {
 
 function CartesInner() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const [cartes, setCartes] = useState<Carte[]>([])
   const [prices, setPrices] = useState<Record<number, any[]>>({})
   const [series, setSeries] = useState<Serie[]>([])
@@ -345,7 +344,7 @@ function CartesInner() {
               return (
                 <button
                   key={serie.id}
-                  onClick={() => { setSelectedSerie(serie); setSortMode('numero'); setSearch(''); router.replace(`/cartes?serie=${serie.slug_fr}`, { scroll: false }) }}
+                  onClick={() => { setSelectedSerie(serie); setSortMode('numero'); setSearch(''); window.history.replaceState(null, '', `/cartes?serie=${serie.slug_fr}`) }}
                   style={{
                     background: 'var(--surface-2)', border: '.5px solid var(--border)', borderRadius: 12,
                     padding: '1rem', cursor: 'pointer', textAlign: 'left', transition: 'all .15s', width: '100%',
