@@ -41,55 +41,54 @@ async function fetchAllPages(table: string, select: string, filter?: { col: stri
 function PieChart({ wizards, ev }: { wizards: number; ev: number }) {
   const total = wizards + ev
   if (total === 0) return null
-  const W = 200
-  const cx = W / 2
-  const cy = W / 2
-  const r = 75
+  const W = 160, cx = W / 2, cy = W / 2, r = 60
   const wizPct = wizards / total
 
-  function slice(startPct: number, endPct: number, color: string, label: string, count: number) {
-    const start = startPct * 2 * Math.PI - Math.PI / 2
-    const end = endPct * 2 * Math.PI - Math.PI / 2
-    const x1 = cx + r * Math.cos(start)
-    const y1 = cy + r * Math.sin(start)
-    const x2 = cx + r * Math.cos(end)
-    const y2 = cy + r * Math.sin(end)
+  function arc(startPct: number, endPct: number, color: string) {
+    const s = startPct * 2 * Math.PI - Math.PI / 2
+    const e = endPct * 2 * Math.PI - Math.PI / 2
+    const x1 = cx + r * Math.cos(s), y1 = cy + r * Math.sin(s)
+    const x2 = cx + r * Math.cos(e), y2 = cy + r * Math.sin(e)
     const large = (endPct - startPct) > 0.5 ? 1 : 0
-    const mid = (start + end) / 2
-    const lx = cx + (r + 28) * Math.cos(mid)
-    const ly = cy + (r + 28) * Math.sin(mid)
-    return (
-      <g key={color}>
-        <path d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`} fill={color} opacity="0.85" />
-        <text x={lx} y={ly - 6} textAnchor="middle" fontSize="10" fill="#555" fontWeight="500">{label}</text>
-        <text x={lx} y={ly + 7} textAnchor="middle" fontSize="11" fill="#333" fontWeight="600">{count}</text>
-      </g>
-    )
+    return <path key={color} d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`} fill={color} opacity="0.9" />
   }
 
   return (
-    <svg viewBox={`0 0 ${W} ${W}`} width={W} height={W}>
-      {slice(0, wizPct, '#378ADD', 'Wizards', wizards)}
-      {slice(wizPct, 1, '#639922', 'EV', ev)}
-      <circle cx={cx} cy={cy} r={r * 0.45} fill="white" />
-      <text x={cx} y={cy - 6} textAnchor="middle" fontSize="11" fill="#666">Total</text>
-      <text x={cx} y={cy + 10} textAnchor="middle" fontSize="14" fill="#333" fontWeight="600">{total}</text>
-    </svg>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <svg viewBox={`0 0 ${W} ${W}`} width={W} height={W} style={{ flexShrink: 0 }}>
+        {arc(0, wizPct, '#378ADD')}
+        {arc(wizPct, 1, '#639922')}
+        <circle cx={cx} cy={cy} r={r * 0.42} fill="var(--surface-2)" />
+        <text x={cx} y={cy - 5} textAnchor="middle" fontSize="10" fill="var(--text-muted)">Total</text>
+        <text x={cx} y={cy + 11} textAnchor="middle" fontSize="16" fill="var(--text-primary)" fontWeight="500">{total}</text>
+      </svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[{ color: '#378ADD', label: 'Wizards', count: wizards }, { color: '#639922', label: 'EV', count: ev }].map(b => (
+          <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: b.color, flexShrink: 0 }}></div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>{b.label}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{b.count} cartes</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
 export default function Dashboard() {
   const [series, setSeries] = useState<Serie[]>([])
-  const [totalCards, setTotalCards] = useState(0)
   const [totalPrix, setTotalPrix] = useState(0)
+  const [totalCards, setTotalCards] = useState(0)
   const [lastDate, setLastDate] = useState('')
   const [loading, setLoading] = useState(true)
   const [topCartes, setTopCartes] = useState<TopCarte[]>([])
-  const [portfolioStats, setPortfolioStats] = useState<{ valeur: number; pnl: number; nb: number } | null>(null)
+  const [portfolioStats, setPortfolioStats] = useState<{ valeur: number; pnl: number; nb: number; pnlPct: number } | null>(null)
   const [lastDateParSerie, setLastDateParSerie] = useState<Record<number, string>>({})
   const [nbWizards, setNbWizards] = useState(0)
   const [nbEV, setNbEV] = useState(0)
-  const [prochaineSerie, setProchaineSerie] = useState<{ nom_fr: string; lastDate: string; joursDepuis: number } | null>(null)
+  const [prochaineSerie, setProchaineSerie] = useState<{ nom_fr: string; slug_fr: string; lastDate: string; joursDepuis: number } | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -110,85 +109,69 @@ export default function Dashboard() {
         pm[p.carte_id].push(p)
       }
 
-      // Cartes par serie
       const cartesParSerie: Record<number, any[]> = {}
       for (const c of cartesData) {
         if (!cartesParSerie[c.serie_id]) cartesParSerie[c.serie_id] = []
         cartesParSerie[c.serie_id].push(c)
       }
 
-      // Date du dernier scraping par serie
       const dateParSerie: Record<number, string> = {}
       for (const c of cartesData) {
-        const rows = pm[c.id] || []
-        for (const r of rows) {
-          if (!dateParSerie[c.serie_id] || r.date_scrape > dateParSerie[c.serie_id]) {
+        for (const r of (pm[c.id] || [])) {
+          if (!dateParSerie[c.serie_id] || r.date_scrape > dateParSerie[c.serie_id])
             dateParSerie[c.serie_id] = r.date_scrape
-          }
         }
       }
       setLastDateParSerie(dateParSerie)
 
-      // Prochaine serie a scrapper = serie complete (100%) avec la date la plus ancienne
+      // Prochaine serie a scrapper
       const seriesCompletes = seriesData.filter(s => {
         const cartes = cartesParSerie[s.id] || []
-        if (cartes.length === 0) return false
-        const completes = cartes.filter(c => (pm[c.id]?.length || 0) >= 5).length
-        return completes === cartes.length
+        return cartes.length > 0 && cartes.filter(c => (pm[c.id]?.length || 0) >= 5).length === cartes.length
       })
       if (seriesCompletes.length > 0) {
-        const prochaine = seriesCompletes.sort((a, b) => {
-          const da = dateParSerie[a.id] || '0000-00-00'
-          const db = dateParSerie[b.id] || '0000-00-00'
-          return da.localeCompare(db)
-        })[0]
-        const dernDate = dateParSerie[prochaine.id]
-        const jours = dernDate ? Math.floor((Date.now() - new Date(dernDate).getTime()) / 86400000) : 0
-        setProchaineSerie({ nom_fr: prochaine.nom_fr, lastDate: dernDate || '—', joursDepuis: jours })
+        const prochaine = seriesCompletes.sort((a, b) =>
+          (dateParSerie[a.id] || '0').localeCompare(dateParSerie[b.id] || '0')
+        )[0]
+        const d = dateParSerie[prochaine.id]
+        const jours = d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : 0
+        setProchaineSerie({ nom_fr: prochaine.nom_fr, slug_fr: prochaine.slug_fr, lastDate: d || '--', joursDepuis: jours })
       }
 
-      // Stats blocs
-      const wiz = seriesData.filter(s => s.bloc === 'Wizards').reduce((sum, s) => sum + (cartesParSerie[s.id]?.length || 0), 0)
-      const evC = seriesData.filter(s => s.bloc === 'EV').reduce((sum, s) => sum + (cartesParSerie[s.id]?.length || 0), 0)
-      setNbWizards(wiz)
-      setNbEV(evC)
+      // Blocs
+      setNbWizards(seriesData.filter(s => s.bloc === 'Wizards').reduce((sum, s) => sum + (cartesParSerie[s.id]?.length || 0), 0))
+      setNbEV(seriesData.filter(s => s.bloc === 'EV').reduce((sum, s) => sum + (cartesParSerie[s.id]?.length || 0), 0))
 
       // Top 5 tendance
-      const cartesAvecTendance: TopCarte[] = []
+      const tops: TopCarte[] = []
       for (const c of cartesData) {
         const rows = pm[c.id] || []
         if (rows.length < 10) continue
         const hist = getHistAll(rows)
         if (hist.length < 2) continue
-        const prix = getPrixFromRows(rows)
+        const px = getPrixFromRows(rows)
         const serie = (c.series as any)
-        const isHolo = parseInt(c.numero) <= 16
-        const sc = computeScore(prix, isHolo, serie?.bloc || '', hist)
+        const sc = computeScore(px, parseInt(c.numero) <= 16, serie?.bloc || '', hist)
         if (sc.tendancePct == null || sc.tendancePct <= 0) continue
-        cartesAvecTendance.push({
-          id: c.id, nom_fr: c.nom_fr, numero: c.numero, slug_carte_fr: c.slug_carte_fr,
+        tops.push({ id: c.id, nom_fr: c.nom_fr, numero: c.numero, slug_carte_fr: c.slug_carte_fr,
           serie: { nom_fr: serie?.nom_fr || '', slug_fr: serie?.slug_fr || '' },
-          tendancePct: sc.tendancePct,
-          prixActuel: prix.NM ?? prix.EX ?? prix.GD ?? null,
-          score: sc.total,
-        })
+          tendancePct: sc.tendancePct, prixActuel: px.NM ?? px.EX ?? px.GD ?? null, score: sc.total })
       }
-      cartesAvecTendance.sort((a, b) => b.tendancePct - a.tendancePct)
-      setTopCartes(cartesAvecTendance.slice(0, 5))
+      tops.sort((a, b) => b.tendancePct - a.tendancePct)
+      setTopCartes(tops.slice(0, 5))
 
       // Portefeuille
-      const { data: portData } = await supabase
-        .from('portefeuille').select('prix_achat,quantite,carte_id,etat,statut').eq('statut', 'actif')
+      const { data: portData } = await supabase.from('portefeuille').select('prix_achat,quantite,carte_id,etat,statut').eq('statut', 'actif')
       if (portData && portData.length > 0) {
-        const coutTotal = portData.reduce((s: number, p: any) => s + p.prix_achat * p.quantite, 0)
-        const valeurTotale = portData.reduce((s: number, p: any) => {
-          const rows = pm[p.carte_id] || []
-          const prix = getPrixFromRows(rows)
+        const cout = portData.reduce((s: number, p: any) => s + p.prix_achat * p.quantite, 0)
+        const valeur = portData.reduce((s: number, p: any) => {
+          const px = getPrixFromRows(pm[p.carte_id] || [])
           const etatKey = p.etat?.split(' ')[0] || 'NM'
-          const prixActuel = (prix as any)[etatKey] ?? null
-          return s + (prixActuel != null ? prixActuel * p.quantite : p.prix_achat * p.quantite)
+          const v = (px as any)[etatKey] ?? null
+          return s + (v != null ? v * p.quantite : p.prix_achat * p.quantite)
         }, 0)
-        setPortfolioStats({ valeur: valeurTotale, pnl: valeurTotale - coutTotal, nb: portData.length })
+        const pnl = valeur - cout
+        setPortfolioStats({ valeur, pnl, nb: portData.length, pnlPct: cout > 0 ? Math.round(pnl / cout * 1000) / 10 : 0 })
       }
 
       setSeries(seriesData)
@@ -200,159 +183,170 @@ export default function Dashboard() {
     load()
   }, [])
 
+  const card = (content: React.ReactNode, style?: React.CSSProperties) => (
+    <div style={{ background: 'var(--surface-2)', border: '.5px solid var(--border)', borderRadius: 12, padding: '1rem 1.25rem', ...style }}>
+      {content}
+    </div>
+  )
+
+  const sectionLabel = (text: string) => (
+    <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: '0.6rem' }}>{text}</div>
+  )
+
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '1.5rem 1rem' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
         <div>
-          <h1 className="text-2xl font-medium text-gray-900">PokeInvest</h1>
-          <p className="text-sm text-gray-500 mt-1">Simulateur d'investissement TCG</p>
+          <h1 style={{ fontSize: 22, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>Dashboard</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Simulateur d'investissement TCG Pokemon</p>
         </div>
-        <Link href="/cartes" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-          Explorer les cartes
+        <Link href="/cartes" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: 'var(--fill-accent)', color: 'white', borderRadius: 'var(--radius)', fontSize: 13, fontWeight: 500, textDecoration: 'none' }}>
+          <i className="ti ti-cards" aria-hidden="true"></i> Explorer les cartes
         </Link>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Chargement...</div>
-      ) : (
-        <>
-          {/* Metriques */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-xs text-gray-500 mb-1">Prix collectes</div>
-              <div className="text-xl font-medium text-gray-900">{totalPrix.toLocaleString()}</div>
-              <div className="text-xs text-gray-400 mt-1">{totalCards.toLocaleString()} cartes</div>
+        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)', fontSize: 14 }}>Chargement...</div>
+      ) : (<>
+
+        {/* Ligne 1 : metriques */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: '1rem' }}>
+          {[
+            { label: 'Prix collectes', value: totalPrix.toLocaleString(), sub: `${totalCards.toLocaleString()} cartes · 5 etats`, icon: 'ti-database' },
+            { label: 'Dernier scraping', value: lastDate || '--', sub: 'prochain dans ~30 jours', icon: 'ti-refresh' },
+          ].map(m => (
+            <div key={m.label} style={{ background: 'var(--surface-2)', border: '.5px solid var(--border)', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--bg-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <i className={`ti ${m.icon}`} style={{ fontSize: 16, color: 'var(--text-accent)' }} aria-hidden="true"></i>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{m.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 1 }}>{m.value}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.sub}</div>
+              </div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-xs text-gray-500 mb-1">Dernier scraping</div>
-              <div className="text-xl font-medium text-gray-900">{lastDate || '--'}</div>
-              <div className="text-xs text-gray-400 mt-1">prochain dans ~30 jours</div>
-            </div>
-            {prochaineSerie && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="text-xs text-amber-600 mb-1 font-medium">Prochaine serie a scrapper</div>
-                <div className="text-sm font-medium text-gray-900">{prochaineSerie.nom_fr}</div>
-                <div className="text-xs text-amber-600 mt-1">
-                  Dernier scraping il y a {prochaineSerie.joursDepuis}j ({prochaineSerie.lastDate})
+          ))}
+
+          {/* Prochaine serie */}
+          {prochaineSerie && (
+            <Link href={`/cartes?serie=${prochaineSerie.slug_fr}`} style={{ textDecoration: 'none' }}>
+              <div style={{ background: 'var(--bg-warning)', border: '.5px solid var(--border-warning)', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', gap: 12, alignItems: 'center', height: '100%', cursor: 'pointer' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <i className="ti ti-clock" style={{ fontSize: 16, color: 'var(--text-warning)' }} aria-hidden="true"></i>
                 </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-warning)', fontWeight: 500, marginBottom: 2 }}>Prochaine a scrapper</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 1 }}>{prochaineSerie.nom_fr}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-warning)' }}>Derniere fois il y a {prochaineSerie.joursDepuis}j</div>
+                </div>
+              </div>
+            </Link>
+          )}
+        </div>
+
+        {/* Ligne 2 : camembert + top 5 */}
+        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 10, marginBottom: '1rem' }}>
+
+          {/* Camembert */}
+          {card(<>
+            {sectionLabel('Repartition')}
+            <PieChart wizards={nbWizards} ev={nbEV} />
+          </>)}
+
+          {/* Top 5 */}
+          {card(<>
+            {sectionLabel('Top 5 — Meilleure progression')}
+            {topCartes.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '1.5rem', fontSize: 13, color: 'var(--text-muted)', background: 'var(--surface-1)', borderRadius: 8 }}>
+                Pas encore assez de donnees de tendance
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {topCartes.map((c, i) => {
+                  const url = imgUrl(c.slug_carte_fr, c.serie.slug_fr, c.numero)
+                  return (
+                    <Link key={c.id} href={`/carte/${c.id}`} style={{ textDecoration: 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 8, transition: 'background .15s', cursor: 'pointer' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--surface-1)'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', width: 16 }}>#{i + 1}</div>
+                        <div style={{ width: 32, height: 40, background: 'var(--surface-1)', borderRadius: 6, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {url ? <img src={url} alt={c.nom_fr} style={{ height: '100%', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} /> : <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>?</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nom_fr}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.serie.nom_fr} · N°{c.numero}</div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-success)' }}>+{c.tendancePct}%</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmt(c.prixActuel)}</div>
+                        </div>
+                        <div style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: 'var(--bg-warning)', color: 'var(--text-warning)', fontWeight: 500, flexShrink: 0 }}>{c.score}</div>
+                      </div>
+                    </Link>
+                  )
+                })}
               </div>
             )}
-          </div>
+          </>)}
+        </div>
 
-          {/* Camembert + Top cartes */}
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3 self-start">Repartition</div>
-              <PieChart wizards={nbWizards} ev={nbEV} />
-              <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-blue-400"></div>Wizards ({nbWizards})
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-green-600"></div>EV ({nbEV})
-                </div>
+        {/* Ligne 3 : portefeuille */}
+        {portfolioStats && (
+          <div style={{ marginBottom: '1rem' }}>
+            {card(<>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                {sectionLabel('Portefeuille')}
+                <Link href="/portefeuille" style={{ fontSize: 12, color: 'var(--text-accent)', textDecoration: 'none' }}>Voir tout →</Link>
               </div>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl p-4 col-span-2">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Top 5 -- Meilleure progression</div>
-              {topCartes.length === 0 ? (
-                <div className="text-sm text-gray-400 text-center py-4">Pas encore assez de donnees de tendance</div>
-              ) : (
-                <div className="space-y-2">
-                  {topCartes.map((c, i) => {
-                    const url = imgUrl(c.slug_carte_fr, c.serie.slug_fr, c.numero)
-                    return (
-                      <Link key={c.id} href={`/carte/${c.id}`} className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-1.5 transition-colors">
-                        <div className="text-xs font-medium text-gray-300 w-4">#{i + 1}</div>
-                        <div className="w-8 h-10 bg-gray-50 rounded flex-shrink-0 overflow-hidden flex items-center justify-center">
-                          {url ? <img src={url} alt={c.nom_fr} className="h-full object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} /> : <span className="text-gray-300 text-xs">?</span>}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 truncate">{c.nom_fr}</div>
-                          <div className="text-xs text-gray-400">{c.serie.nom_fr} N{c.numero}</div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-sm font-medium text-green-600">+{c.tendancePct}%</div>
-                          <div className="text-xs text-gray-400">{fmt(c.prixActuel)}</div>
-                        </div>
-                        <div className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-medium">
-                          {c.score}
-                        </div>
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Resume portefeuille */}
-          {portfolioStats && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Portefeuille</div>
-                <Link href="/portefeuille" className="text-xs text-blue-600 hover:underline">Voir tout</Link>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Positions actives</div>
-                  <div className="text-lg font-medium text-gray-900">{portfolioStats.nb}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Valeur actuelle</div>
-                  <div className="text-lg font-medium text-gray-900">{fmt(portfolioStats.valeur)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">P&L latent</div>
-                  <div className={`text-lg font-medium ${portfolioStats.pnl >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                    {portfolioStats.pnl >= 0 ? '+' : ''}{fmt(portfolioStats.pnl)}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                {[
+                  { label: 'Positions', value: portfolioStats.nb.toString(), sub: 'actives' },
+                  { label: 'Valeur actuelle', value: fmt(portfolioStats.valeur), sub: 'Cardmarket' },
+                  { label: 'P&L latent', value: `${portfolioStats.pnl >= 0 ? '+' : ''}${fmt(portfolioStats.pnl)}`, sub: `${portfolioStats.pnlPct >= 0 ? '+' : ''}${portfolioStats.pnlPct}%`, color: portfolioStats.pnl >= 0 ? 'var(--text-success)' : 'var(--text-danger)' },
+                ].map(m => (
+                  <div key={m.label} style={{ background: 'var(--surface-1)', borderRadius: 8, padding: '0.75rem' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{m.label}</div>
+                    <div style={{ fontSize: 16, fontWeight: 500, color: (m as any).color || 'var(--text-primary)' }}>{m.value}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{m.sub}</div>
                   </div>
-                </div>
+                ))}
               </div>
-            </div>
-          )}
-
-          {/* Tableau scraping par serie */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Dernier scraping par serie</div>
-            <div className="grid grid-cols-2 gap-x-8">
-              {[
-                { label: 'Bloc Wizards', items: series.filter(s => s.bloc === 'Wizards') },
-                { label: 'Bloc EV', items: series.filter(s => s.bloc === 'EV') }
-              ].map(bloc => (
-                <div key={bloc.label}>
-                  <div className="text-xs font-medium text-gray-500 mb-2">{bloc.label}</div>
-                  <div className="space-y-1.5">
-                    {bloc.items.map(s => {
-                      const dernierScraping = lastDateParSerie[s.id] || null
-                      const joursDepuis = dernierScraping
-                        ? Math.floor((Date.now() - new Date(dernierScraping).getTime()) / 86400000)
-                        : null
-                      const couleur = joursDepuis == null ? 'text-gray-300'
-                        : joursDepuis <= 7 ? 'text-green-600'
-                        : joursDepuis <= 20 ? 'text-amber-500'
-                        : 'text-red-500'
-                      return (
-                        <div key={s.id} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
-                          <span className="text-sm text-gray-700">{s.nom_fr}</span>
-                          <span className={`text-xs font-medium ${couleur}`}>
-                            {dernierScraping
-                              ? joursDepuis === 0 ? "Aujourd'hui"
-                              : joursDepuis === 1 ? 'Il y a 1 jour'
-                              : `Il y a ${joursDepuis}j`
-                              : '--'}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+            </>)}
           </div>
-        </>
-      )}
+        )}
+
+        {/* Ligne 4 : tableau scraping */}
+        {card(<>
+          {sectionLabel('Dernier scraping par serie')}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 2rem' }}>
+            {[
+              { label: 'Bloc Wizards', items: series.filter(s => s.bloc === 'Wizards') },
+              { label: 'Bloc EV', items: series.filter(s => s.bloc === 'EV') },
+            ].map(bloc => (
+              <div key={bloc.label}>
+                <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>{bloc.label}</div>
+                {bloc.items.map(s => {
+                  const d = lastDateParSerie[s.id]
+                  const j = d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : null
+                  const color = j == null ? 'var(--text-muted)' : j <= 7 ? 'var(--text-success)' : j <= 20 ? 'var(--text-warning)' : 'var(--text-danger)'
+                  return (
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '.5px solid var(--surface-0)' }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{s.nom_fr}</span>
+                      <span style={{ fontSize: 11, fontWeight: 500, color }}>
+                        {d ? j === 0 ? "Aujourd'hui" : j === 1 ? 'Il y a 1j' : `Il y a ${j}j` : '--'}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </>)}
+
+      </>)}
     </div>
   )
 }
