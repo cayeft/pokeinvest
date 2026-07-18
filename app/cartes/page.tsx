@@ -54,11 +54,12 @@ function CartesInner() {
   // Charger les cartes quand une serie est selectionnee
   useEffect(() => {
     if (!selectedSerie) { setCartes([]); setPrixParCarte({}); return }
+    const serie = selectedSerie
     async function loadCartes() {
       setLoadingCartes(true)
       const { data: cartesData } = await supabase
         .from('cartes').select('id,nom_fr,numero,version,slug_carte_fr,serie_id')
-        .eq('serie_id', selectedSerie.id).eq('actif', true)
+        .eq('serie_id', serie.id).eq('actif', true)
 
       const cartes = cartesData || []
       const ids = cartes.map(c => c.id)

@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
-import { getPrixFromRows, fmt } from '@/lib/scoring'
+import { getDernierPrixTcgdex, fmt } from '@/lib/scoring'
 
 const ETATS = ['MT', 'NM', 'EX', 'GD', 'LP'] as const
 type Etat = typeof ETATS[number]
@@ -98,14 +98,14 @@ export default function Portefeuille() {
 
     if (!posData) { setLoading(false); return }
 
-    // Charger les prix actuels pour chaque carte
+    // Charger les prix TCGdex (prix moyen) pour chaque carte
     const carteIds = [...new Set(posData.map(p => p.carte_id))]
     const prixMap: Record<number, any[]> = {}
     for (let i = 0; i < carteIds.length; i += 50) {
       const batch = carteIds.slice(i, i + 50)
       const { data: prixData } = await supabase
-        .from('prix_historique')
-        .select('carte_id,condition,prix_fr,date_scrape')
+        .from('prix_tcgdex')
+        .select('*')
         .in('carte_id', batch)
       if (prixData) {
         for (const p of prixData) {
@@ -117,9 +117,9 @@ export default function Portefeuille() {
 
     const enriched = posData.map(pos => {
       const rows = prixMap[pos.carte_id] || []
-      const prix = getPrixFromRows(rows)
+      const prix = getDernierPrixTcgdex(rows)
+      const prixActuel = prix?.avg ?? null
       const etatKey = pos.etat?.split(' ')[0] as Etat || 'NM'
-      const prixActuel = prix[etatKey] ?? null
       const coutTotal = pos.prix_achat * pos.quantite
       const valeurActuelle = prixActuel ? prixActuel * pos.quantite : null
       const pnl = valeurActuelle != null ? valeurActuelle - coutTotal : null
