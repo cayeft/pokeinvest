@@ -1,15 +1,20 @@
-export interface Prix {
-  MT: number | null
-  NM: number | null
-  EX: number | null
-  GD: number | null
-  LP: number | null
-}
+// ============================================================
+// PokeInvest -- Scoring base sur les prix agreges TCGdex
+// Utilise avg, avg7, avg30, trend, low pour calculer un signal
+// d'investissement ACHETER / ATTENDRE / VENDRE.
+// ============================================================
 
-export interface HistPoint {
-  date: string
-  prix: Record<string, number | null>
-  nbOffres?: Record<string, number | null>
+export interface PrixTcgdex {
+  avg: number | null
+  low: number | null
+  trend: number | null
+  avg1: number | null
+  avg7: number | null
+  avg30: number | null
+  avg_holo: number | null
+  trend_holo: number | null
+  date_import: string
+  id_product_cm: number | null
 }
 
 export type Recommandation = 'ACHETER' | 'VENDRE' | 'ATTENDRE'
@@ -17,139 +22,93 @@ export type Recommandation = 'ACHETER' | 'VENDRE' | 'ATTENDRE'
 export interface ScoreResult {
   reco: Recommandation
   recoDetail: string
-  scoreAchat: number      // 0-100
-  scoreVente: number      // 0-100
-  tendancePct: number | null
-  rareteMarcheScore: number
-  momentumScore: number
-  ecartScore: number
-  total: number           // score lisibilite legacy (0-100)
-  tendancePct2: number | null  // alias pour compat
+  scoreAchat: number
+  scoreVente: number
   recoColor: 'green' | 'red' | 'gray'
+  momentumCT: number | null
+  momentumMT: number | null
+  anticipation: number | null
+  tension: number | null
+  prix: number | null
+  trend: number | null
 }
 
-// Calcule la tendance moyenne sur TOUS les etats (premier vs dernier point valide)
-function calcTendance(hist: HistPoint[]): number | null {
-  if (hist.length < 2) return null
-  const etats = ['MT', 'NM', 'EX', 'GD', 'LP']
-  const variations: number[] = []
-  for (const etat of etats) {
-    const valides = hist.map(h => h.prix[etat]).filter((v): v is number => v != null)
-    if (valides.length >= 2 && valides[0] > 0) {
-      variations.push((valides[valides.length - 1] / valides[0] - 1) * 100)
-    }
+function pct(a: number | null, b: number | null): number | null {
+  if (a == null || b == null || b === 0) return null
+  return Math.round((a / b - 1) * 1000) / 10
+}
+
+export function computeScoreTcgdex(p: PrixTcgdex | null): ScoreResult {
+  const empty: ScoreResult = {
+    reco: 'ATTENDRE', recoDetail: 'Aucune donnee de prix disponible.',
+    scoreAchat: 0, scoreVente: 0, recoColor: 'gray',
+    momentumCT: null, momentumMT: null, anticipation: null, tension: null,
+    prix: null, trend: null,
   }
-  if (variations.length === 0) return null
-  return Math.round(variations.reduce((a, b) => a + b) / variations.length * 10) / 10
-}
+  if (!p || p.avg == null) return empty
 
-// Calcule le momentum : tendance sur les 2 derniers points vs tendance globale
-function calcMomentum(hist: HistPoint[]): number | null {
-  if (hist.length < 3) return null
-  const recent = hist.slice(-2)
-  const tendRecente = calcTendance(recent)
-  const tendGlobale = calcTendance(hist)
-  if (tendRecente == null || tendGlobale == null) return null
-  // Momentum positif si tendance recente > tendance globale (acceleration)
-  return Math.round((tendRecente - tendGlobale) * 10) / 10
-}
+  const { avg, avg7, avg30, trend, low } = p
 
-// Calcule le score de rarete marche : peu d'offres NM + prix eleve = rare
-function calcRareteMarche(prixRows: any[]): number {
-  // Prendre la moyenne des nb_offres sur NM pour le dernier scraping
-  const nmRows = prixRows.filter(r => r.condition?.startsWith('NM') && r.nb_offres != null)
-  if (nmRows.length === 0) return 50 // neutre si pas de donnees
-  const dernierNM = nmRows.sort((a, b) => b.date_scrape.localeCompare(a.date_scrape))[0]
-  const nbOffres = dernierNM.nb_offres || 0
-  // < 5 offres = tres rare, > 50 = abondant
-  if (nbOffres === 0) return 90
-  if (nbOffres < 5) return 80
-  if (nbOffres < 15) return 65
-  if (nbOffres < 30) return 50
-  if (nbOffres < 60) return 35
-  return 20
-}
-
-export function computeScore(
-  prix: Prix,
-  isHolo: boolean,
-  bloc: string,
-  hist?: HistPoint[],
-  prixRows?: any[]
-): ScoreResult {
-  const nm = prix.NM ?? prix.EX
-  const gd = prix.GD ?? prix.LP
-
-  // 1. Tendance globale
-  const tendancePct = hist ? calcTendance(hist) : null
-
-  // 2. Momentum (acceleration recente)
-  const momentum = hist ? calcMomentum(hist) : null
-
-  // 3. Rarete de marche (nb offres)
-  const rareteMarche = prixRows ? calcRareteMarche(prixRows) : 50
-
-  // 4. Ecart NM/GD
-  const ecartPct = nm && gd ? Math.round((nm / gd - 1) * 100) : 0
+  const momentumCT = pct(avg, avg7)
+  const momentumMT = pct(avg7, avg30)
+  const anticipation = pct(trend, avg)
+  const tension = pct(low, avg)
 
   // ── SCORE ACHAT (0-100) ──
   let scoreAchat = 0
 
-  // Tendance positive (0-35 pts)
-  if (tendancePct != null) {
-    if (tendancePct >= 20) scoreAchat += 35
-    else if (tendancePct >= 10) scoreAchat += 25
-    else if (tendancePct >= 5) scoreAchat += 15
-    else if (tendancePct >= 0) scoreAchat += 5
-    else if (tendancePct >= -5) scoreAchat += 0
-    else scoreAchat += 0
-  }
+  if (momentumCT != null) {
+    if (momentumCT >= 10) scoreAchat += 25
+    else if (momentumCT >= 5) scoreAchat += 18
+    else if (momentumCT >= 2) scoreAchat += 12
+    else if (momentumCT >= 0) scoreAchat += 6
+  } else scoreAchat += 6
 
-  // Rarete marche (0-25 pts)
-  scoreAchat += Math.round(rareteMarche * 0.25)
+  if (momentumMT != null) {
+    if (momentumMT >= 10) scoreAchat += 25
+    else if (momentumMT >= 5) scoreAchat += 18
+    else if (momentumMT >= 2) scoreAchat += 12
+    else if (momentumMT >= 0) scoreAchat += 6
+  } else scoreAchat += 6
 
-  // Momentum positif = acceleration (0-20 pts)
-  if (momentum != null) {
-    if (momentum >= 10) scoreAchat += 20
-    else if (momentum >= 5) scoreAchat += 14
-    else if (momentum >= 0) scoreAchat += 7
-    else scoreAchat += 0
-  } else {
-    scoreAchat += 7 // neutre si pas assez de donnees
-  }
+  if (anticipation != null) {
+    if (anticipation >= 10) scoreAchat += 25
+    else if (anticipation >= 5) scoreAchat += 18
+    else if (anticipation >= 0) scoreAchat += 10
+  } else scoreAchat += 8
 
-  // Ecart NM/GD eleve = forte demande qualite (0-20 pts)
-  if (ecartPct >= 100) scoreAchat += 20
-  else if (ecartPct >= 50) scoreAchat += 15
-  else if (ecartPct >= 25) scoreAchat += 10
-  else if (ecartPct >= 10) scoreAchat += 5
-  else scoreAchat += 2
+  if (tension != null) {
+    if (tension >= -10) scoreAchat += 25
+    else if (tension >= -25) scoreAchat += 18
+    else if (tension >= -40) scoreAchat += 10
+    else scoreAchat += 4
+  } else scoreAchat += 10
 
   scoreAchat = Math.min(100, Math.max(0, scoreAchat))
 
   // ── SCORE VENTE (0-100) ──
   let scoreVente = 0
 
-  // Forte hausse recente = prendre ses benefices (0-40 pts)
-  if (tendancePct != null) {
-    if (tendancePct >= 50) scoreVente += 40
-    else if (tendancePct >= 30) scoreVente += 30
-    else if (tendancePct >= 15) scoreVente += 20
-    else if (tendancePct >= 5) scoreVente += 10
-    else if (tendancePct < -10) scoreVente += 5 // baisse = vendre aussi
+  if (momentumCT != null) {
+    if (momentumCT <= -10) scoreVente += 30
+    else if (momentumCT <= -5) scoreVente += 22
+    else if (momentumCT <= -2) scoreVente += 12
+    else if (momentumCT < 0) scoreVente += 6
   }
 
-  // Momentum negatif = deceleration/retournement (0-30 pts)
-  if (momentum != null) {
-    if (momentum <= -10) scoreVente += 30
-    else if (momentum <= -5) scoreVente += 20
-    else if (momentum <= 0) scoreVente += 10
-    else scoreVente += 0
+  const picVsAvg30 = pct(avg, avg30)
+  if (picVsAvg30 != null) {
+    if (picVsAvg30 >= 40) scoreVente += 35
+    else if (picVsAvg30 >= 25) scoreVente += 26
+    else if (picVsAvg30 >= 15) scoreVente += 16
+    else if (picVsAvg30 >= 8) scoreVente += 8
   }
 
-  // Beaucoup d'offres = surabondance (0-30 pts)
-  const antiRarete = 100 - rareteMarche
-  scoreVente += Math.round(antiRarete * 0.30)
+  if (anticipation != null) {
+    if (anticipation <= -10) scoreVente += 35
+    else if (anticipation <= -5) scoreVente += 25
+    else if (anticipation < 0) scoreVente += 12
+  }
 
   scoreVente = Math.min(100, Math.max(0, scoreVente))
 
@@ -158,89 +117,72 @@ export function computeScore(
   let recoDetail = ''
   let recoColor: 'green' | 'red' | 'gray' = 'gray'
 
-  const hasSufficientData = hist && hist.length >= 2
-
-  if (!hasSufficientData) {
-    reco = 'ATTENDRE'
-    recoDetail = 'Donnees insuffisantes — 2+ points de donnees necessaires.'
-    recoColor = 'gray'
-  } else if (scoreVente >= 60 && scoreVente > scoreAchat) {
+  if (scoreVente >= 60 && scoreVente > scoreAchat) {
     reco = 'VENDRE'
-    recoDetail = tendancePct && tendancePct >= 15
-      ? `Hausse de +${tendancePct}% — bonne opportunite de prise de benefices.`
-      : `Pression vendeuse elevee — marche potentiellement sature.`
     recoColor = 'red'
+    if (picVsAvg30 != null && picVsAvg30 >= 15) {
+      recoDetail = `Prix ${picVsAvg30}% au-dessus de la moyenne 30j — opportunite de prise de benefices.`
+    } else if (momentumCT != null && momentumCT < 0) {
+      recoDetail = `Baisse recente (${momentumCT}% vs 7j) — tendance a la baisse.`
+    } else {
+      recoDetail = `Le marche anticipe une baisse (tendance sous le prix actuel).`
+    }
   } else if (scoreAchat >= 55) {
     reco = 'ACHETER'
-    recoDetail = tendancePct && tendancePct > 0
-      ? `Tendance positive (+${tendancePct}%) avec rarete de marche favorable.`
-      : `Signal d'achat base sur la rarete et les fondamentaux du marche.`
     recoColor = 'green'
+    const parts: string[] = []
+    if (momentumCT != null && momentumCT > 0) parts.push(`+${momentumCT}% sur 7j`)
+    if (momentumMT != null && momentumMT > 0) parts.push(`tendance de fond haussiere`)
+    if (anticipation != null && anticipation > 0) parts.push(`Cardmarket anticipe une hausse`)
+    recoDetail = parts.length > 0
+      ? `Signal d'achat : ${parts.join(', ')}.`
+      : `Fondamentaux favorables (marche tendu, prix stable).`
   } else {
     reco = 'ATTENDRE'
-    recoDetail = 'Signal mixte — pas d\'opportunite claire a ce stade.'
     recoColor = 'gray'
+    recoDetail = 'Pas de signal clair — prix stable ou tendance incertaine.'
   }
-
-  // Score legacy pour compat (moyenne ponderee achat/lisibilite)
-  const total = Math.round(scoreAchat * 0.7 + (100 - scoreVente) * 0.3)
 
   return {
-    reco,
-    recoDetail,
-    scoreAchat,
-    scoreVente,
-    tendancePct,
-    rareteMarcheScore: rareteMarche,
-    momentumScore: momentum ?? 0,
-    ecartScore: ecartPct,
-    total,
-    tendancePct2: tendancePct,
-    recoColor,
+    reco, recoDetail, scoreAchat, scoreVente, recoColor,
+    momentumCT, momentumMT, anticipation, tension,
+    prix: avg, trend: trend,
   }
 }
 
-export function getPrixFromRows(rows: any[]): Prix {
-  const map: Record<string, any> = {}
-  for (const r of rows) {
-    const cond = r.condition?.split(' ')[0]
-    if (!cond) continue
-    if (!(cond in map) || r.date_scrape > (map[cond + '_date'] ?? '')) {
-      map[cond] = r.prix_fr
-      map[cond + '_date'] = r.date_scrape
-    }
-  }
-  return {
-    MT: map['MT'] ?? null,
-    NM: map['NM'] ?? null,
-    EX: map['EX'] ?? null,
-    GD: map['GD'] ?? null,
-    LP: map['LP'] ?? null,
-  }
-}
-
-export function getHistAll(rows: any[]): HistPoint[] {
-  const byDate: Record<string, Record<string, number | null>> = {}
-  const offresByDate: Record<string, Record<string, number | null>> = {}
-  for (const r of rows) {
-    const cond = r.condition?.split(' ')[0]
-    if (!cond) continue
-    if (!byDate[r.date_scrape]) byDate[r.date_scrape] = { MT: null, NM: null, EX: null, GD: null, LP: null }
-    if (!offresByDate[r.date_scrape]) offresByDate[r.date_scrape] = { MT: null, NM: null, EX: null, GD: null, LP: null }
-    byDate[r.date_scrape][cond] = r.prix_fr
-    offresByDate[r.date_scrape][cond] = r.nb_offres ?? null
-  }
-  return Object.entries(byDate)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, prix]) => ({ date, prix, nbOffres: offresByDate[date] }))
-}
+// ── Helpers ──
 
 export function fmt(v: number | null | undefined): string {
   if (v == null) return '—'
   return v.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' €'
 }
 
-const SLUG_TO_PTCGIO: Record<string, string> = {
+export function getDernierPrixTcgdex(rows: any[]): PrixTcgdex | null {
+  if (!rows || rows.length === 0) return null
+  const sorted = [...rows].sort((a, b) => b.date_import.localeCompare(a.date_import))
+  const r = sorted[0]
+  return {
+    avg: r.avg, low: r.low, trend: r.trend,
+    avg1: r.avg1, avg7: r.avg7, avg30: r.avg30,
+    avg_holo: r.avg_holo, trend_holo: r.trend_holo,
+    date_import: r.date_import, id_product_cm: r.id_product_cm,
+  }
+}
+
+export function getHistTcgdex(rows: any[]): { date: string; avg: number | null; trend: number | null }[] {
+  if (!rows) return []
+  return [...rows]
+    .sort((a, b) => a.date_import.localeCompare(b.date_import))
+    .map(r => ({ date: r.date_import, avg: r.avg, trend: r.trend }))
+}
+
+export function cardmarketUrl(idProduct: number | null): string | null {
+  if (!idProduct) return null
+  return `https://www.cardmarket.com/fr/Pokemon/Products/Singles/${idProduct}`
+}
+
+// Mapping ancien slug Cardmarket (EV/Wizards) -> setId pokemontcg.io (fallback image)
+const SLUG_FR_TO_PTCGIO: Record<string, string> = {
   'Base-Set': 'base1', 'Jungle': 'base2', 'Fossil': 'base3', 'Team-Rocket': 'base5',
   'Neo-Genesis': 'neo1', 'Neo-Discovery': 'neo2', 'Neo-Revelation': 'neo3', 'Neo-Destiny': 'neo4',
   'Expedition-Base-Set': 'ecard1', 'Aquapolis': 'ecard2',
@@ -249,10 +191,30 @@ const SLUG_TO_PTCGIO: Record<string, string> = {
   'Paldean-Fates': 'sv3pt5', 'Surging-Sparks': 'sv8', 'Stellar-Crown': 'sv7', 'Journey-Together': 'sv9',
 }
 
-export function imgUrl(slugFr: string | null, serieSlug: string | null, numero: string): string | null {
-  if (!serieSlug) return null
-  const setId = SLUG_TO_PTCGIO[serieSlug]
-  if (!setId) return null
-  const num = numero.replace(/^0+/, '') || numero
-  return `https://images.pokemontcg.io/${setId}/${num}.png`
+// Image de la carte. Gere 2 formats de slug_carte_fr:
+//  - id TCGdex (ex: swsh3-136) -> assets.tcgdex.net
+//  - ancien slug Cardmarket (ex: Sprigatito-V1-SVI013) -> images.pokemontcg.io via serie+numero
+export function imgUrl(slugCarteFr: string | null, serieSlug?: string | null, numero?: string): string | null {
+  if (!slugCarteFr) return null
+
+  // Format TCGdex: contient un tiret suivi d'un localId, et commence par des minuscules+chiffres
+  // ex: swsh3-136, sv04.5-91, base1-4
+  if (/^[a-z]+[0-9.]*-/i.test(slugCarteFr) && !slugCarteFr.includes('-V')) {
+    const idx = slugCarteFr.lastIndexOf('-')
+    const setId = slugCarteFr.slice(0, idx)
+    const localId = slugCarteFr.slice(idx + 1)
+    const serieMatch = setId.match(/^([a-z]+)/i)
+    const serie = serieMatch ? serieMatch[1] : setId
+    return `https://assets.tcgdex.net/fr/${serie}/${setId}/${localId}/high.webp`
+  }
+
+  // Ancien format Cardmarket: utiliser pokemontcg.io via serie + numero
+  if (serieSlug && numero) {
+    const setId = SLUG_FR_TO_PTCGIO[serieSlug]
+    if (setId) {
+      const num = numero.replace(/^0+/, '') || numero
+      return `https://images.pokemontcg.io/${setId}/${num}.png`
+    }
+  }
+  return null
 }
