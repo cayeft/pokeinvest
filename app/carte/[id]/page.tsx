@@ -94,7 +94,7 @@ export default function FicheCarte() {
 
   const prix = getDernierPrixTcgdex(prixRows)
   const sc = computeScoreTcgdex(prix)
-  const url = imgUrl(carte.slug_carte_fr, serie?.slug_fr, carte.numero)
+  const url = imgUrl(carte.image_url, serie?.slug_fr, carte.numero)
   const cmUrl = cardmarketUrl(prix?.id_product_cm ?? null)
   const backUrl = serie ? `/cartes?serie=${serie.slug_fr}` : '/cartes'
 

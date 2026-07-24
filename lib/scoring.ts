@@ -181,7 +181,8 @@ export function cardmarketUrl(idProduct: number | null): string | null {
   return `https://www.cardmarket.com/fr/Pokemon/Products/Singles/${idProduct}`
 }
 
-// Mapping ancien slug Cardmarket (EV/Wizards) -> setId pokemontcg.io (fallback image)
+// Image de la carte. Priorite au champ image_url (URL TCGdex complete stockee en base).
+// Ajoute /high.webp au chemin de base. Fallback: pokemontcg.io pour anciennes cartes.
 const SLUG_FR_TO_PTCGIO: Record<string, string> = {
   'Base-Set': 'base1', 'Jungle': 'base2', 'Fossil': 'base3', 'Team-Rocket': 'base5',
   'Neo-Genesis': 'neo1', 'Neo-Discovery': 'neo2', 'Neo-Revelation': 'neo3', 'Neo-Destiny': 'neo4',
@@ -191,24 +192,12 @@ const SLUG_FR_TO_PTCGIO: Record<string, string> = {
   'Paldean-Fates': 'sv3pt5', 'Surging-Sparks': 'sv8', 'Stellar-Crown': 'sv7', 'Journey-Together': 'sv9',
 }
 
-// Image de la carte. Gere 2 formats de slug_carte_fr:
-//  - id TCGdex (ex: swsh3-136) -> assets.tcgdex.net
-//  - ancien slug Cardmarket (ex: Sprigatito-V1-SVI013) -> images.pokemontcg.io via serie+numero
-export function imgUrl(slugCarteFr: string | null, serieSlug?: string | null, numero?: string): string | null {
-  if (!slugCarteFr) return null
-
-  // Format TCGdex: contient un tiret suivi d'un localId, et commence par des minuscules+chiffres
-  // ex: swsh3-136, sv04.5-91, base1-4
-  if (/^[a-z]+[0-9.]*-/i.test(slugCarteFr) && !slugCarteFr.includes('-V')) {
-    const idx = slugCarteFr.lastIndexOf('-')
-    const setId = slugCarteFr.slice(0, idx)
-    const localId = slugCarteFr.slice(idx + 1)
-    const serieMatch = setId.match(/^([a-z]+)/i)
-    const serie = serieMatch ? serieMatch[1] : setId
-    return `https://assets.tcgdex.net/fr/${serie}/${setId}/${localId}/high.webp`
+export function imgUrl(imageUrl?: string | null, serieSlug?: string | null, numero?: string): string | null {
+  // Priorite: image_url TCGdex stockee en base (ex: https://assets.tcgdex.net/fr/swsh/swsh3/136)
+  if (imageUrl && imageUrl.startsWith('http')) {
+    return `${imageUrl}/high.webp`
   }
-
-  // Ancien format Cardmarket: utiliser pokemontcg.io via serie + numero
+  // Fallback pokemontcg.io via serie + numero
   if (serieSlug && numero) {
     const setId = SLUG_FR_TO_PTCGIO[serieSlug]
     if (setId) {

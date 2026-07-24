@@ -58,7 +58,7 @@ function CartesInner() {
     async function loadCartes() {
       setLoadingCartes(true)
       const { data: cartesData } = await supabase
-        .from('cartes').select('id,nom_fr,numero,version,slug_carte_fr,serie_id')
+        .from('cartes').select('id,nom_fr,numero,version,slug_carte_fr,serie_id,image_url')
         .eq('serie_id', serie.id).eq('actif', true)
 
       const cartes = cartesData || []
@@ -165,7 +165,7 @@ function CartesInner() {
               {cartesFiltered.map(c => {
                 const prix = getDernierPrixTcgdex(prixParCarte[c.id] || [])
                 const sc = computeScoreTcgdex(prix)
-                const url = imgUrl(c.slug_carte_fr, selectedSerie.slug_fr, c.numero)
+                const url = imgUrl(c.image_url, selectedSerie.slug_fr, c.numero)
                 return (
                   <Link key={c.id} href={`/carte/${c.id}`} style={{ textDecoration: 'none' }}>
                     <div style={{ background: 'var(--surface-2)', border: '.5px solid var(--border)', borderRadius: 12, padding: '0.75rem', cursor: 'pointer', position: 'relative', transition: 'border-color .15s' }}

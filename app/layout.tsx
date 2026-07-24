@@ -153,7 +153,7 @@ function Nav() {
       <SearchBar />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        {[{ href: '/', label: 'Dashboard' }, { href: '/cartes', label: 'Cartes' }, { href: '/portefeuille', label: 'Portefeuille' }].map(link => (
+        {[{ href: '/', label: 'Dashboard' }, { href: '/cartes', label: 'Cartes' }, { href: '/signaux', label: 'Signaux' }, { href: '/portefeuille', label: 'Portefeuille' }].map(link => (
           <a key={link.href} href={link.href}
             style={{ fontSize: 13, padding: '5px 12px', borderRadius: 'var(--radius)', textDecoration: 'none',
               color: isActive(link.href) ? 'var(--text-primary)' : 'var(--text-muted)',

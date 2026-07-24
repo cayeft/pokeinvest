@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { computeScoreTcgdex, getDernierPrixTcgdex, fmt, imgUrl } from '@/lib/scoring'
 
 interface TopCarte {
-  id: number; nom_fr: string; numero: string; slug_carte_fr: string | null
+  id: number; nom_fr: string; numero: string; slug_carte_fr: string | null; image_url?: string | null
   serie: { nom_fr: string; slug_fr: string }
   momentum: number; prix: number | null; scoreAchat: number
 }
@@ -51,7 +51,7 @@ export default function Dashboard() {
       }
 
       // Charger les cartes (avec serie) pour le top
-      const cartesData = await fetchAllPages('cartes', 'id,nom_fr,numero,slug_carte_fr,version,serie_id,series(nom_fr,slug_fr,bloc)')
+      const cartesData = await fetchAllPages('cartes', 'id,nom_fr,numero,slug_carte_fr,version,serie_id,image_url,series(nom_fr,slug_fr,bloc)')
       const cartesById: Record<number, any> = {}
       for (const c of cartesData) cartesById[c.id] = c
 
@@ -71,7 +71,7 @@ export default function Dashboard() {
         .filter(s => s.sc.reco === 'ACHETER')
         .sort((a, b) => b.sc.scoreAchat - a.sc.scoreAchat || (b.sc.momentumCT ?? 0) - (a.sc.momentumCT ?? 0))
         .slice(0, 5)
-        .map(s => ({ id: s.carte.id, nom_fr: s.carte.nom_fr, numero: s.carte.numero, slug_carte_fr: s.carte.slug_carte_fr,
+        .map(s => ({ id: s.carte.id, nom_fr: s.carte.nom_fr, numero: s.carte.numero, slug_carte_fr: s.carte.slug_carte_fr, image_url: s.carte.image_url,
           serie: { nom_fr: (s.carte.series as any)?.nom_fr || '', slug_fr: (s.carte.series as any)?.slug_fr || '' },
           momentum: s.sc.momentumCT ?? 0, prix: s.prix.avg, scoreAchat: s.sc.scoreAchat }))
       setTopAchat(achat)
@@ -81,7 +81,7 @@ export default function Dashboard() {
         .filter(s => s.sc.reco === 'VENDRE')
         .sort((a, b) => b.sc.scoreVente - a.sc.scoreVente)
         .slice(0, 5)
-        .map(s => ({ id: s.carte.id, nom_fr: s.carte.nom_fr, numero: s.carte.numero, slug_carte_fr: s.carte.slug_carte_fr,
+        .map(s => ({ id: s.carte.id, nom_fr: s.carte.nom_fr, numero: s.carte.numero, slug_carte_fr: s.carte.slug_carte_fr, image_url: s.carte.image_url,
           serie: { nom_fr: (s.carte.series as any)?.nom_fr || '', slug_fr: (s.carte.series as any)?.slug_fr || '' },
           momentum: s.sc.momentumCT ?? 0, prix: s.prix.avg, scoreAchat: s.sc.scoreVente }))
       setTopVente(vente)
@@ -118,7 +118,7 @@ export default function Dashboard() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {cartes.map((c, i) => {
-          const url = imgUrl(c.slug_carte_fr, c.serie.slug_fr, c.numero)
+          const url = imgUrl(c.image_url, c.serie.slug_fr, c.numero)
           const color = type === 'achat' ? 'var(--text-success)' : 'var(--text-danger)'
           return (
             <Link key={c.id} href={`/carte/${c.id}`} style={{ textDecoration: 'none' }}>
